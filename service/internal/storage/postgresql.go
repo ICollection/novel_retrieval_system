@@ -25,7 +25,7 @@ func Create() (*PostgreSQL, error) {
 
 // QueryEmpty 执行查询不返回值。
 func (postgresql *PostgreSQL) QueryEmpty(ctx context.Context, sql string, arguments ...any) error {
-	_, err := postgresql.pool.Exec(ctx, sql, arguments)
+	_, err := postgresql.pool.Exec(ctx, sql, arguments...)
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func (postgresql *PostgreSQL) QueryEmpty(ctx context.Context, sql string, argume
 
 // QuerySlice 执行查询返回切片。
 func (postgresql *PostgreSQL) QuerySlice[T any](ctx context.Context, sql string, arguments ...any) ([]T, error) {
-	rows, err := postgresql.pool.Query(ctx, sql, arguments)
+	rows, err := postgresql.pool.Query(ctx, sql, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -45,10 +45,23 @@ func (postgresql *PostgreSQL) QuerySlice[T any](ctx context.Context, sql string,
 	return result, nil
 }
 
-// QueryPlain 执行查询返回单值。
-func (postgresql *PostgreSQL) QueryPlain[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
+// QuerySingle 执行查询返回记录。
+func (postgresql *PostgreSQL) QuerySingle[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
+	rows, err := postgresql.pool.Query(ctx, sql, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	result, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[T])
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// QuerySimple 执行查询返回单值。
+func (postgresql *PostgreSQL) QuerySimple[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
 	var result T
-	err := postgresql.pool.QueryRow(ctx, sql, arguments).Scan(&result)
+	err := postgresql.pool.QueryRow(ctx, sql, arguments...).Scan(&result)
 	if err != nil {
 		return nil, err
 	}
