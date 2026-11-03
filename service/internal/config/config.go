@@ -8,11 +8,11 @@ import (
 
 // config 应用配置。
 type config struct {
-	Web        web        `mapstructure:"web"`
-	Embedding  embedding  `mapstructure:"embedding"`
-	PostgreSQL postgresql `mapstructure:"postgresql"`
-	Qdrant     qdrant     `mapstructure:"qdrant"`
-	MinIO      minio      `mapstructure:"minio"`
+	Web       web       `mapstructure:"web"`
+	Embedding embedding `mapstructure:"embedding"`
+	Postgre   postgre   `mapstructure:"postgre"`
+	Qdrant    qdrant    `mapstructure:"qdrant"`
+	MinIO     minio     `mapstructure:"minio"`
 }
 
 // web 服务配置。
@@ -28,8 +28,8 @@ type embedding struct {
 	Model   string `mapstructure:"model"`
 }
 
-// postgresql 数据库连接配置。
-type postgresql struct {
+// postgre 数据库连接配置。
+type postgre struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Username string `mapstructure:"username"`
@@ -39,8 +39,8 @@ type postgresql struct {
 }
 
 // GetDSN 获取连接字符串。
-func (postgresql *postgresql) GetDSN() string {
-	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgresql.Username, postgresql.Password), Host: net.JoinHostPort(postgresql.Host, strconv.Itoa(postgresql.Port)), Path: "/" + postgresql.Database, RawQuery: "sslmode=" + postgresql.SSLMode}
+func (postgre *postgre) GetDSN() string {
+	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgre.Username, postgre.Password), Host: net.JoinHostPort(postgre.Host, strconv.Itoa(postgre.Port)), Path: "/" + postgre.Database, RawQuery: "sslmode=" + postgre.SSLMode}
 	return url.String()
 }
 

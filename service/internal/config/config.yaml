@@ -15,7 +15,7 @@ embedding:
   model: Qwen3-Embedding-0.6B-f16
 
 # PostgreSQL 数据库
-postgresql:
+postgre:
   # 服务地址
   host: 192.168.1.100
   # 服务端口

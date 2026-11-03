@@ -12,12 +12,12 @@ import (
 
 // AccountService 系统用户服务。
 type AccountService struct {
-	postgresql *storage.PostgreSQL
+	postgre *storage.Postgre
 }
 
 // NewAccountService 创建系统用户服务。
-func NewAccountService(postgresql *storage.PostgreSQL) *AccountService {
-	return &AccountService{postgresql: postgresql}
+func NewAccountService(postgre *storage.Postgre) *AccountService {
+	return &AccountService{postgre: postgre}
 }
 
 // Append 添加系统用户。
@@ -29,7 +29,7 @@ func (service *AccountService) Append(ctx context.Context, name *string, login *
 		return nil, err
 	}
 	// 插入系统用户。
-	err = service.postgresql.QueryEmpty(ctx, `insert into account(id,name,login,password,permission) values($1,$2,$3,$4,$5)`, id, name, login, string(hash), permission)
+	err = service.postgre.QueryNaught(ctx, `insert into account(id,name,login,password,permission) values($1,$2,$3,$4,$5)`, id, name, login, string(hash), permission)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (service *AccountService) Append(ctx context.Context, name *string, login *
 // Modify 修改系统用户。
 func (service *AccountService) Modify(ctx context.Context, id *string, name *string, permission *string) (*string, error) {
 	// 修改系统用户。
-	err := service.postgresql.QueryEmpty(ctx, `update account set name=$2,permission=$3 where id=$1;`, id, name, permission)
+	err := service.postgre.QueryNaught(ctx, `update account set name=$2,permission=$3 where id=$1;`, id, name, permission)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (service *AccountService) Change(ctx context.Context, id *string, password 
 		return nil, err
 	}
 	// 改密系统用户。
-	err = service.postgresql.QueryEmpty(ctx, `update account set password=$2 where id=$1;`, id, string(hash))
+	err = service.postgre.QueryNaught(ctx, `update account set password=$2 where id=$1;`, id, string(hash))
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (service *AccountService) Change(ctx context.Context, id *string, password 
 // Delete 删除系统用户。
 func (service *AccountService) Delete(ctx context.Context, id *string) (*string, error) {
 	// 删除系统用户。
-	err := service.postgresql.QueryEmpty(ctx, `delete from account where id=$1;`, id)
+	err := service.postgre.QueryNaught(ctx, `delete from account where id=$1;`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 		return nil, err
 	}
 	// 查询系统用户。
-	account, err := service.postgresql.QuerySingle[Account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
+	account, err := service.postgre.QuerySingle[Account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
 	if err != nil {
 		return nil, errors.New("用户不存在或密码错误。")
 	}
@@ -101,7 +101,7 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 
 // Filter 查询系统用户。
 func (service *AccountService) Filter(ctx context.Context) ([]Account, error) {
-	result, err := service.postgresql.QuerySlice[Account](ctx, `select id,name,login,password,permission from account order by id;`)
+	result, err := service.postgre.QueryMatrix[Account](ctx, `select id,name,login,password,permission from account order by id;`)
 	if err != nil {
 		return nil, err
 	}
