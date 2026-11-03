@@ -7,6 +7,13 @@ web:
   # 运行模式：debug、release、test
   mode: debug
 
+# 登录令牌（JWT）
+token:
+  # 签名密钥（随机生成，泄漏后需重新生成）
+  secret: bbc91851ffc98ee7478557eac744ef49f6c8c28d5693e49f114d949cf013060e67214e5d93c31dd55b9b343a40a7dfdd
+  # 有效期（小时）
+  expire: 24
+
 # 向量化服务（OpenAI 兼容接口）
 embedding:
   # 接口地址，包含版本路径

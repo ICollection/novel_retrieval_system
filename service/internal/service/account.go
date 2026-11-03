@@ -77,22 +77,13 @@ func (service *AccountService) Delete(ctx context.Context, id *string) (*string,
 
 // Verify 验证系统用户。
 func (service *AccountService) Verify(ctx context.Context, login *string, password *string) (*string, error) {
-	// 计算密码哈希。
-	hash1, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
 	// 查询系统用户。
 	account, err := service.postgre.QuerySingle[Account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
 	if err != nil {
 		return nil, errors.New("用户不存在或密码错误。")
 	}
 	// 比较系统用户。
-	hash2, err := bcrypt.GenerateFromPassword([]byte(*account.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
-	if string(hash1) != string(hash2) {
+	if err := bcrypt.CompareHashAndPassword([]byte(*account.Password), []byte(*password)); err != nil {
 		return nil, errors.New("用户不存在或密码错误。")
 	}
 	// 返回用户令牌。

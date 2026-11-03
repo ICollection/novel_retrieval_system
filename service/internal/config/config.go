@@ -9,10 +9,17 @@ import (
 // config 应用配置。
 type config struct {
 	Web       web       `mapstructure:"web"`
+	Token     token     `mapstructure:"token"`
 	Embedding embedding `mapstructure:"embedding"`
 	Postgre   postgre   `mapstructure:"postgre"`
 	Qdrant    qdrant    `mapstructure:"qdrant"`
 	MinIO     minio     `mapstructure:"minio"`
+}
+
+// token 登录令牌配置。
+type token struct {
+	Secret string `mapstructure:"secret"`
+	Expire int    `mapstructure:"expire"`
 }
 
 // web 服务配置。
