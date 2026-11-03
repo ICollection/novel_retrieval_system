@@ -1,29 +1,52 @@
 package server
 
 import (
-	"net/http"
+	"strings"
 
-	"service/internal/handler"
+	"github.com/gin-gonic/gin"
+
 	"service/internal/server/response"
 )
 
-// NewRouter 创建路由并挂载中间件。
-func NewRouter(h *handler.Handler) http.Handler {
-	mux := http.NewServeMux()
+// Registrar 可注册路由的业务接口。
+type Registrar interface {
+	Register(group *gin.RouterGroup)
+}
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		response.OK(w, map[string]string{"status": "ok"})
+// Setup 设置 Gin 运行模式、挂载中间件并注册路由。
+// contextPath 为业务接口的路径前缀，mode 为 Gin 运行模式。
+func Setup(engine *gin.Engine, contextPath string, mode string, handlers ...Registrar) {
+	setMode(mode)
+	engine.Use(gin.Logger(), gin.Recovery(), CORS())
+
+	engine.GET("/healthz", func(c *gin.Context) {
+		response.OK(c, gin.H{"status": "ok"})
 	})
 
-	// 业务一：上传文件与处理进度。
-	mux.HandleFunc("POST /api/v1/files", h.Upload)
-	mux.HandleFunc("GET /api/v1/files", h.List)
-	mux.HandleFunc("GET /api/v1/files/{id}/progress", h.Progress)
-	mux.HandleFunc("POST /api/v1/files/{id}/retry", h.Retry)
-	mux.HandleFunc("DELETE /api/v1/files/{id}", h.Delete)
+	group := engine.Group(normalize(contextPath))
+	for _, h := range handlers {
+		h.Register(group)
+	}
+}
 
-	// 业务二：对话与查询。
-	mux.HandleFunc("POST /api/v1/chat", h.Chat)
+// normalize 规范化上下文目录：确保以 / 开头，且不以 / 结尾。
+func normalize(contextPath string) string {
+	prefix := strings.TrimSpace(contextPath)
+	prefix = strings.TrimSuffix(prefix, "/")
+	if prefix != "" && !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	return prefix
+}
 
-	return Chain(mux, Recover, Logger, CORS)
+// setMode 设置 Gin 运行模式，非法值按 debug 处理。
+func setMode(mode string) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case gin.ReleaseMode:
+		gin.SetMode(gin.ReleaseMode)
+	case gin.TestMode:
+		gin.SetMode(gin.TestMode)
+	default:
+		gin.SetMode(gin.DebugMode)
+	}
 }

@@ -1,21 +1,29 @@
 package config
 
-// Config 应用配置。
-type Config struct {
-	Embedding  Embedding  `mapstructure:"embedding"`
-	PostgreSQL PostgreSQL `mapstructure:"postgresql"`
-	Qdrant     Qdrant     `mapstructure:"qdrant"`
-	MinIO      MinIO      `mapstructure:"minio"`
+// config 应用配置。
+type config struct {
+	Web        web        `mapstructure:"web"`
+	Embedding  embedding  `mapstructure:"embedding"`
+	PostgreSQL postgresql `mapstructure:"postgresql"`
+	Qdrant     qdrant     `mapstructure:"qdrant"`
+	MinIO      minio      `mapstructure:"minio"`
 }
 
-// Embedding 向量化服务配置。
-type Embedding struct {
+// web 服务配置。
+type web struct {
+	Port        int    `mapstructure:"port"`
+	ContextPath string `mapstructure:"context_path"`
+	Mode        string `mapstructure:"mode"`
+}
+
+// embedding 向量化服务配置。
+type embedding struct {
 	BaseURL string `mapstructure:"base_url"`
 	Model   string `mapstructure:"model"`
 }
 
-// PostgreSQL 数据库连接配置。
-type PostgreSQL struct {
+// postgresql 数据库连接配置。
+type postgresql struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Username string `mapstructure:"username"`
@@ -24,16 +32,16 @@ type PostgreSQL struct {
 	SSLMode  string `mapstructure:"sslmode"`
 }
 
-// Qdrant 向量数据库连接配置。
-type Qdrant struct {
+// qdrant 向量数据库连接配置。
+type qdrant struct {
 	Host       string `mapstructure:"host"`
 	Port       int    `mapstructure:"port"`
 	APIKey     string `mapstructure:"api_key"`
 	Collection string `mapstructure:"collection"`
 }
 
-// MinIO 对象存储配置。
-type MinIO struct {
+// minio 对象存储配置。
+type minio struct {
 	Endpoint  string `mapstructure:"endpoint"`
 	Port      int    `mapstructure:"port"`
 	AccessKey string `mapstructure:"access_key"`

@@ -12,16 +12,16 @@ import (
 // init 初始化集合。
 func init() {
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host:   config.Conf.Qdrant.Host,
-		Port:   config.Conf.Qdrant.Port,
-		APIKey: config.Conf.Qdrant.APIKey,
+		Host:   config.Config.Qdrant.Host,
+		Port:   config.Config.Qdrant.Port,
+		APIKey: config.Config.Qdrant.APIKey,
 	})
 	if err != nil {
 		log.Fatal("创建连接失败，详细错误信息：", err)
 	}
 	defer client.Close()
 	ctx := context.Background()
-	collection := config.Conf.Qdrant.Collection
+	collection := config.Config.Qdrant.Collection
 	if exists, err := client.CollectionExists(ctx, collection); err != nil {
 		log.Fatal("创建连接失败，详细错误信息：", err)
 	} else if exists == false {

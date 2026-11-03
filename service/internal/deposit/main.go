@@ -21,11 +21,11 @@ func Embedding(name string) {
 
 func loadFile(name string) error {
 	// 创建数据连接。
-	client1 := openai.NewClient(option.WithBaseURL(config.Conf.Embedding.BaseURL))
+	client1 := openai.NewClient(option.WithBaseURL(config.Config.Embedding.BaseURL))
 	client2, err := qdrant.NewClient(&qdrant.Config{
-		Host:   config.Conf.Qdrant.Host,
-		Port:   config.Conf.Qdrant.Port,
-		APIKey: config.Conf.Qdrant.APIKey,
+		Host:   config.Config.Qdrant.Host,
+		Port:   config.Config.Qdrant.Port,
+		APIKey: config.Config.Qdrant.APIKey,
 	})
 	if err != nil {
 		log.Fatal("创建连接失败，详细错误信息：", err)
@@ -62,7 +62,7 @@ func handle(client1 *openai.Client, client2 *qdrant.Client, ctx context.Context,
 
 func getEmbedding(client *openai.Client, ctx context.Context, text string) []float64 {
 	response, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-		Model: config.Conf.Embedding.Model,
+		Model: config.Config.Embedding.Model,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(text),
 		},
@@ -81,7 +81,7 @@ func upsertPoint(client *qdrant.Client, ctx context.Context, data []float32, tex
 			Payload: qdrant.NewValueMap(map[string]any{"text": text, "name": name}),
 		},
 	}
-	_, err := client.Upsert(ctx, &qdrant.UpsertPoints{CollectionName: config.Conf.Qdrant.Collection, Points: points})
+	_, err := client.Upsert(ctx, &qdrant.UpsertPoints{CollectionName: config.Config.Qdrant.Collection, Points: points})
 	if err != nil {
 		log.Fatal("插入向量失败，详细错误信息：", err)
 	}
