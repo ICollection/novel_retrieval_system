@@ -1,5 +1,11 @@
 package config
 
+import (
+	"net"
+	"net/url"
+	"strconv"
+)
+
 // config 应用配置。
 type config struct {
 	Web        web        `mapstructure:"web"`
@@ -30,6 +36,12 @@ type postgresql struct {
 	Password string `mapstructure:"password"`
 	Database string `mapstructure:"database"`
 	SSLMode  string `mapstructure:"sslmode"`
+}
+
+// GetDSN 获取连接字符串。
+func (postgresql *postgresql) GetDSN() string {
+	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgresql.Username, postgresql.Password), Host: net.JoinHostPort(postgresql.Host, strconv.Itoa(postgresql.Port)), Path: "/" + postgresql.Database, RawQuery: "sslmode=" + postgresql.SSLMode}
+	return url.String()
 }
 
 // qdrant 向量数据库连接配置。

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"sync"
 
 	minioSDK "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -19,20 +18,6 @@ type Store struct {
 	client *minioSDK.Client
 	bucket string
 	region string
-}
-
-var (
-	defaultOnce  sync.Once
-	defaultStore *Store
-	defaultErr   error
-)
-
-// Default 返回默认存储，首次调用时创建客户端，不校验连通性。
-func Default() (*Store, error) {
-	defaultOnce.Do(func() {
-		defaultStore, defaultErr = New()
-	})
-	return defaultStore, defaultErr
 }
 
 // New 创建 MinIO 存储。

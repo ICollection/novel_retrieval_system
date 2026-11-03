@@ -10,10 +10,23 @@ import (
 	"service/internal/handler"
 	"service/internal/server"
 	"service/internal/service"
+	"service/internal/storage/minio"
+	"service/internal/storage/postgres"
 )
 
 func main() {
-	ingest := handler.NewIngestHandler(service.NewIngestService())
+	pg, err := postgres.New()
+	if err != nil {
+		log.Fatal("创建 PostgreSQL 存储失败：", err)
+	}
+	defer pg.Close()
+
+	objects, err := minio.New()
+	if err != nil {
+		log.Fatal("创建 MinIO 存储失败：", err)
+	}
+
+	ingest := handler.NewIngestHandler(service.NewIngestService(pg, objects))
 	chat := handler.NewChatHandler(service.NewChatService())
 
 	engine := gin.New()
