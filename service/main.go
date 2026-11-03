@@ -11,7 +11,6 @@ import (
 	"service/internal/server"
 	"service/internal/service"
 	"service/internal/storage"
-	"service/internal/storage/minio"
 )
 
 func main() {
@@ -23,7 +22,7 @@ func main() {
 	defer postgre.Close()
 
 	// 创建对象存储。
-	objects, err := minio.New()
+	objects, err := storage.CreateMinio()
 	if err != nil {
 		log.Fatal("创建 MinIO 存储失败，详细错误信息：", err)
 	}

@@ -15,7 +15,6 @@ import (
 
 	"service/internal/model"
 	"service/internal/storage"
-	"service/internal/storage/minio"
 )
 
 // ErrDuplicateFile 表示相同内容的上传文件已存在。
@@ -26,11 +25,11 @@ var ErrDuplicateFile = errors.New("文件已存在")
 // 负责上传文件到对象存储、登记原始文件记录。
 type IngestService struct {
 	postgre *storage.Postgre
-	objects *minio.Store
+	objects *storage.Minio
 }
 
 // NewIngestService 创建文件接入业务。
-func NewIngestService(postgre *storage.Postgre, objects *minio.Store) *IngestService {
+func NewIngestService(postgre *storage.Postgre, objects *storage.Minio) *IngestService {
 	return &IngestService{postgre: postgre, objects: objects}
 }
 
@@ -67,7 +66,7 @@ func (service *IngestService) Upload(ctx context.Context, name string, size int6
 
 	// 上传对象文件。
 	object := objectName(id, kind)
-	if err = service.objects.Put(ctx, object, data); err != nil {
+	if err = service.objects.Upload(ctx, "", object, data, ""); err != nil {
 		return nil, err
 	}
 
@@ -76,7 +75,7 @@ func (service *IngestService) Upload(ctx context.Context, name string, size int6
 		origin.ID, origin.Name, origin.Type, origin.Size, origin.Hash, origin.CreateTime)
 	if err != nil {
 		// 清理对象文件。
-		if removeErr := service.objects.Remove(ctx, object); removeErr != nil {
+		if removeErr := service.objects.Delete(ctx, object); removeErr != nil {
 			return nil, fmt.Errorf("%w；清理对象文件失败：%v", err, removeErr)
 		}
 		// 判断摘要是否重复，并发上传同一文件时由唯一约束兜底。

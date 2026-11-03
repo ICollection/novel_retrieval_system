@@ -20,7 +20,7 @@ type Postgre struct {
 	pool *pgxpool.Pool
 }
 
-// CreatePostgre 创建 PostgreSQL 数据库连接，创建成功后多次调用返回同一实例。
+// CreatePostgre 创建 PostgreSQL 数据库连接。
 func CreatePostgre() (*Postgre, error) {
 	postgreMutex.Lock()
 	defer postgreMutex.Unlock()
