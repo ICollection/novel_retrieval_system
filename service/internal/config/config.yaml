@@ -1,0 +1,49 @@
+# 向量化服务（OpenAI 兼容接口）
+embedding:
+  # 接口地址，包含版本路径
+  base_url: http://192.168.1.100:5050/v1
+  # 模型名称
+  model: Qwen3-Embedding-0.6B-f16
+
+# PostgreSQL 数据库
+postgresql:
+  # 服务地址
+  host: 192.168.1.100
+  # 服务端口
+  port: 5432
+  # 登录名
+  username: novel
+  # 登录密码，建议通过环境变量注入，不要写死在这里
+  password: Passw0rd@123
+  # 数据库名称
+  database: novel
+  # SSL 模式：disable / require
+  sslmode: disable
+
+# Qdrant 向量数据库
+qdrant:
+  # 服务地址
+  host: 192.168.1.100
+  # gRPC 端口
+  port: 6334
+  # API Key，未开启鉴权时留空
+  api_key:
+  # 集合名称
+  collection: novel
+
+# MinIO 对象存储
+minio:
+  # 服务地址（不包含协议和端口）
+  endpoint: 192.168.1.100
+  # 服务端口
+  port: 9000
+  # 登录名（Access Key）
+  access_key: novel
+  # 登录密码（Secret Key）
+  secret_key: Passw0rd@123
+  # 存储桶名称
+  bucket: novel
+  # 是否使用 HTTPS
+  use_ssl: false
+  # 区域，MinIO 默认为 us-east-1
+  region: us-east-1

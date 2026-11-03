@@ -10,16 +10,23 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/qdrant/go-client/qdrant"
+
+	"service/internal/config"
 )
 
-func Embedding() {
-	loadFile("H:\\图书\\明帝国的崛起.txt")
+// Embedding 读取指定文件并写入向量库。
+func Embedding(name string) {
+	loadFile(name)
 }
 
 func loadFile(name string) error {
 	// 创建数据连接。
-	client1 := openai.NewClient(option.WithBaseURL("http://192.168.1.100:5050/v1"))
-	client2, err := qdrant.NewClient(&qdrant.Config{Host: "192.168.1.100", Port: 6334})
+	client1 := openai.NewClient(option.WithBaseURL(config.Conf.Embedding.BaseURL))
+	client2, err := qdrant.NewClient(&qdrant.Config{
+		Host:   config.Conf.Qdrant.Host,
+		Port:   config.Conf.Qdrant.Port,
+		APIKey: config.Conf.Qdrant.APIKey,
+	})
 	if err != nil {
 		log.Fatal("创建连接失败，详细错误信息：", err)
 	}
@@ -55,7 +62,7 @@ func handle(client1 *openai.Client, client2 *qdrant.Client, ctx context.Context,
 
 func getEmbedding(client *openai.Client, ctx context.Context, text string) []float64 {
 	response, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-		Model: "Qwen3-Embedding-0.6B-f16",
+		Model: config.Conf.Embedding.Model,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(text),
 		},
@@ -74,7 +81,7 @@ func upsertPoint(client *qdrant.Client, ctx context.Context, data []float32, tex
 			Payload: qdrant.NewValueMap(map[string]any{"text": text, "name": name}),
 		},
 	}
-	_, err := client.Upsert(ctx, &qdrant.UpsertPoints{CollectionName: "novel", Points: points})
+	_, err := client.Upsert(ctx, &qdrant.UpsertPoints{CollectionName: config.Conf.Qdrant.Collection, Points: points})
 	if err != nil {
 		log.Fatal("插入向量失败，详细错误信息：", err)
 	}
