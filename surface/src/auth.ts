@@ -6,12 +6,15 @@ export interface Session {
   token: string
   name: string
   login: string
+  /** 逗号分隔的权限串，与后端令牌中的 permission 一致。 */
+  permission?: string
 }
 
 /** 令牌中的用户信息。 */
 interface Claims {
   name?: string
   login?: string
+  permission?: string
   sub?: string
 }
 
@@ -24,7 +27,14 @@ export function getSession(): Session | null {
   try {
     const session = JSON.parse(raw) as Session
     // 缺少令牌或用户信息的旧数据视为未登录
-    return session && session.token && session.name ? session : null
+    if (!session || !session.token || !session.name) {
+      return null
+    }
+    // 旧会话没有权限字段时，从令牌中补全
+    if (session.permission === undefined) {
+      session.permission = parseClaims(session.token)?.permission
+    }
+    return session
   } catch {
     return null
   }
@@ -33,6 +43,14 @@ export function getSession(): Session | null {
 /** 是否已登录 */
 export function isLoggedIn(): boolean {
   return getSession() !== null
+}
+
+/** 判断权限串中是否包含指定权限，匹配规则与后端 Claims.HasPermission 一致。 */
+export function hasPermission(permission: string | undefined, target: string): boolean {
+  if (!permission) {
+    return false
+  }
+  return permission.split(',').includes(target)
 }
 
 /**
@@ -71,7 +89,8 @@ export async function signIn(login: string, password: string): Promise<Session> 
   const session: Session = {
     token,
     name: claims?.name ?? login.trim(),
-    login: claims?.login ?? login.trim()
+    login: claims?.login ?? login.trim(),
+    permission: claims?.permission
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
   return session

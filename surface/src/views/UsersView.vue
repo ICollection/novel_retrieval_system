@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { getSession } from '../auth'
+import { getSession, hasPermission } from '../auth'
 import { request } from '../api'
 
 interface Account {
@@ -19,7 +19,10 @@ const permissions = [
   { value: 'HandleNovel', label: '处理小说' }
 ]
 
-const token = getSession()?.token ?? ''
+const session = getSession()
+const token = session?.token ?? ''
+/** 没有管理用户权限时，增删改按钮全部禁用。 */
+const canManage = hasPermission(session?.permission, 'ManageUser')
 const accounts = ref<Account[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -221,7 +224,7 @@ onMounted(load)
       </div>
       <div class="actions">
         <el-button :loading="loading" @click="load">刷新</el-button>
-        <el-button type="primary" @click="openAdd">添加用户</el-button>
+        <el-button type="primary" :disabled="!canManage" @click="openAdd">添加用户</el-button>
       </div>
     </header>
 
@@ -248,9 +251,11 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="操作" width="210" align="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">修改</el-button>
-            <el-button link type="primary" @click="openPassword(row)">改密</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <el-button link type="primary" :disabled="!canManage" @click="openEdit(row)">修改</el-button>
+            <el-button link type="primary" :disabled="!canManage" @click="openPassword(row)">
+              改密
+            </el-button>
+            <el-button link type="danger" :disabled="!canManage" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

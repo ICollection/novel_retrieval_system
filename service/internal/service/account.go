@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"fmt"
 	"service/internal/server"
 	"service/internal/storage"
 	"strings"
@@ -28,8 +27,6 @@ func createAccountService() (*AccountService, error) {
 
 // Append 添加系统用户。
 func (service *AccountService) Append(ctx *gin.Context, name *string, login *string, password *string, permission *string) (*string, error) {
-	claims := ctx.MustGet("claims").(*server.Claims)
-	fmt.Println(claims.Subject)
 	id := strings.ToUpper(uuid.NewV4().String())
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
