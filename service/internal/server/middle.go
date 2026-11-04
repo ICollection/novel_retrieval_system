@@ -2,8 +2,6 @@ package server
 
 import (
 	"net/http"
-	"service/internal/server/response"
-	"service/internal/service"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,15 +19,26 @@ func CrossDomain(ctx *gin.Context) {
 	ctx.Next()
 }
 
-// Identity 获取登录用户。
-func Identity(ctx *gin.Context) {
+// TestLogin 验证用户登录。
+func TestLogin(ctx *gin.Context) {
 	buffer := strings.TrimPrefix(ctx.GetHeader("Authorization"), "Bearer ")
-	claims, err := service.ParseToken(buffer)
+	claims, err := ParseToken(buffer)
 	if err != nil {
-		response.Error(ctx, http.StatusUnauthorized, err.Error())
-		ctx.Abort()
+		Failure(ctx, Failure401, err.Error())
 		return
 	}
 	ctx.Set("claims", claims)
 	ctx.Next()
+}
+
+// TestPermit 验证用户权限。
+func TestPermit(permission string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		claims := ctx.MustGet("claims").(*Claims)
+		if claims.HasPermission(permission) == false {
+			Failure(ctx, Failure403, "用户缺少权限。")
+			return
+		}
+		ctx.Next()
+	}
 }

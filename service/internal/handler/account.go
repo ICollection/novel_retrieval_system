@@ -23,15 +23,15 @@ func createAccountHandler() (*AccountHandler, error) {
 	return &AccountHandler{accountService: service.Account}, nil
 }
 
-// Register 注册路由分组。
-func (handler *AccountHandler) Register(engine *gin.Engine) {
+// register 注册路由分组。
+func (handler *AccountHandler) register(engine *gin.Engine) {
 	group := engine.Group(config.Config.Web.ContextPath + "/account")
-	group.POST("/append", handler.append)
-	group.PATCH("/modify", handler.modify)
-	group.PATCH("/change", handler.change)
-	group.DELETE("/delete", handler.delete)
+	group.POST("/append", handler.append, server.TestLogin, server.TestPermit(server.ManageUser))
+	group.PATCH("/modify", handler.modify, server.TestLogin, server.TestPermit(server.ManageUser))
+	group.PATCH("/change", handler.change, server.TestLogin, server.TestPermit(server.ManageUser))
+	group.DELETE("/delete", handler.delete, server.TestLogin, server.TestPermit(server.ManageUser))
 	group.GET("/verify", handler.verify)
-	group.GET("/filter", handler.filter)
+	group.GET("/filter", handler.filter, server.TestLogin)
 }
 
 // append 添加系统用户。

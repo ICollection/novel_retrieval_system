@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"service/internal/server"
 	"service/internal/storage"
 	"strings"
 
@@ -91,7 +92,7 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 		return nil, errors.New("用户不存在或密码错误。")
 	}
 	// 返回用户令牌。
-	token, err := IssueToken(account.Id, account.Name, account.Login, account.Password)
+	token, err := server.IssueToken(account.Id, account.Name, account.Login, account.Password)
 	if err != nil {
 		return nil, err
 	}

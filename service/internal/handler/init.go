@@ -14,5 +14,5 @@ func init() {
 
 // Register 注册处理器路由。
 func Register(engine *gin.Engine) {
-	account.Register(engine)
+	account.register(engine)
 }

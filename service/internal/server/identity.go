@@ -1,4 +1,4 @@
-package service
+package server
 
 import (
 	"errors"
@@ -19,6 +19,26 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// HasPermission 是否具有权限。
+func (claims *Claims) HasPermission(permission string) bool {
+	if claims.Permission == nil {
+		return false
+	}
+	if *claims.Permission == permission {
+		return true
+	}
+	if strings.HasPrefix(*claims.Permission, permission+",") == true {
+		return true
+	}
+	if strings.HasSuffix(*claims.Permission, ","+permission) == true {
+		return true
+	}
+	if strings.Contains(*claims.Permission, ","+permission+",") == true {
+		return true
+	}
+	return false
+}
+
 // IssueToken 签发登录令牌。
 func IssueToken(id *string, name *string, login *string, permission *string) (*string, error) {
 	// 组装令牌载荷。
@@ -37,7 +57,7 @@ func IssueToken(id *string, name *string, login *string, permission *string) (*s
 		ID:         strings.ToUpper(uuid.NewV4().String()),
 	}
 	// 签发登录令牌。
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(config.Config.Token.Secret)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(config.Config.Token.Secret))
 	if err != nil {
 		return nil, fmt.Errorf("签发登录令牌失败，详细错误信息：%w", err)
 	}
@@ -57,3 +77,10 @@ func ParseToken(buffer string) (*Claims, error) {
 	}
 	return claims, nil
 }
+
+// 用户权限。
+const (
+	ManageUser  string = "ManageUser"
+	UploadNovel string = "UploadNovel"
+	HandleNovel string = "HandleNovel"
+)
