@@ -6,9 +6,9 @@ import (
 	"service/internal/server"
 	"service/internal/storage"
 	"strings"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -30,7 +30,7 @@ func createAccountService() (*AccountService, error) {
 func (service *AccountService) Append(ctx *gin.Context, name *string, login *string, password *string, permission *string) (*string, error) {
 	claims := ctx.MustGet("claims").(*server.Claims)
 	fmt.Println(claims.Subject)
-	id := strings.ToUpper(uuid.NewString())
+	id := strings.ToUpper(uuid.NewV4().String())
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
 	if err != nil {
