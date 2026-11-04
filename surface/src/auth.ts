@@ -1,20 +1,11 @@
-const STORAGE_KEY = 'novel-qa-session'
+import { request } from './api'
 
-/** 后端接口地址，端口与 service/internal/config/config.yaml 中的 web.port 保持一致。 */
-const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8048/service`
+const STORAGE_KEY = 'novel-qa-session'
 
 export interface Session {
   token: string
   name: string
   login: string
-}
-
-/** 后端统一返回结构。 */
-interface Result {
-  success: boolean
-  failure: number
-  message?: string
-  content?: unknown
 }
 
 /** 令牌中的用户信息。 */
@@ -69,17 +60,13 @@ export async function signIn(login: string, password: string): Promise<Session> 
     throw new Error('登录名和密码不能为空')
   }
 
-  const query = new URLSearchParams({ login: login.trim(), password })
-  const response = await fetch(`${API_BASE_URL}/account/verify?${query.toString()}`)
-  if (!response.ok) {
-    throw new Error(`登录请求失败（HTTP ${response.status}）`)
-  }
-  const result = (await response.json()) as Result
-  if (!result.success || typeof result.content !== 'string') {
-    throw new Error(result.message ?? '登录失败')
+  const token = await request<string>('/account/verify', {
+    query: { login: login.trim(), password }
+  })
+  if (typeof token !== 'string') {
+    throw new Error('登录失败')
   }
 
-  const token = result.content
   const claims = parseClaims(token)
   const session: Session = {
     token,

@@ -6,7 +6,15 @@ import { getSession, signOut } from '../auth'
 const route = useRoute()
 const router = useRouter()
 
-const activeKey = computed(() => (route.path.startsWith('/documents') ? 'documents' : 'chat'))
+const activeKey = computed(() => {
+  if (route.path.startsWith('/documents')) {
+    return 'documents'
+  }
+  if (route.path.startsWith('/users')) {
+    return 'users'
+  }
+  return 'chat'
+})
 
 const session = getSession()
 const username = session?.name ?? '未登录'
@@ -76,6 +84,19 @@ function logout() {
           <span class="nav-copy">
             <b>文档处理</b>
             <i>上传小说并查看处理状态</i>
+          </span>
+        </RouterLink>
+
+        <RouterLink to="/users" class="nav-item" :class="{ 'is-active': activeKey === 'users' }">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="9" cy="8" r="3.2" />
+            <path d="M3.5 19.5c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" stroke-linecap="round" />
+            <path d="M16 5.2a3.2 3.2 0 0 1 0 6.1" stroke-linecap="round" />
+            <path d="M17.5 14.4c2 .7 3.5 2.6 3.5 5.1" stroke-linecap="round" />
+          </svg>
+          <span class="nav-copy">
+            <b>用户管理</b>
+            <i>账号与权限维护</i>
           </span>
         </RouterLink>
       </nav>
