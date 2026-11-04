@@ -4,29 +4,37 @@ import (
 	"errors"
 	"fmt"
 	"service/internal/config"
+	"strings"
 	"time"
+	"uuid"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// TokenService 登录令牌服务。
-type TokenService struct {
+// Claims 令牌声明。
+type Claims struct {
+	Name       *string `json:"name"`
+	Login      *string `json:"login"`
+	Permission *string `json:"permission"`
+	jwt.RegisteredClaims
 }
 
-// Sign 签发登录令牌。
-func (service *TokenService) Sign(account *Account) (*string, error) {
+// IssueToken 签发登录令牌。
+func IssueToken(id *string, name *string, login *string, permission *string) (*string, error) {
 	// 组装令牌载荷。
 	moment := time.Now()
 	expire := moment.Add(time.Duration(config.Config.Token.Expire) * time.Hour)
 	claims := Claims{
-		ID:         account.Id,
-		Name:       account.Name,
-		Login:      account.Login,
-		Permission: account.Permission,
-		Subject:    *account.Id,
-		IssuedAt:   jwt.NewNumericDate(moment),
-		NotBefore:  jwt.NewNumericDate(moment),
+		Name:       name,
+		Login:      login,
+		Permission: permission,
+		Issuer:     "service",
+		Subject:    *id,
+		Audience:   []string{"surface"},
 		ExpiresAt:  jwt.NewNumericDate(expire),
+		NotBefore:  jwt.NewNumericDate(moment),
+		IssuedAt:   jwt.NewNumericDate(moment),
+		ID:         strings.ToUpper(uuid.NewV4().String()),
 	}
 	// 签发登录令牌。
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(config.Config.Token.Secret)
@@ -37,21 +45,15 @@ func (service *TokenService) Sign(account *Account) (*string, error) {
 	return &token, nil
 }
 
-// Parse 解析并校验登录令牌。
-func (service *TokenService) Parse(raw string) (*Claims, error) {
+// ParseToken 验证登录令牌。
+func ParseToken(buffer string) (*Claims, error) {
 	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(raw, claims, func(*jwt.Token) (any, error) { return config.Config.Token.Secret, nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
-	if err != nil || !token.Valid {
+	token, err := jwt.ParseWithClaims(buffer, claims, func(*jwt.Token) (any, error) { return config.Config.Token.Secret, nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	if err != nil {
+		return nil, fmt.Errorf("验证登录令牌失败，详细错误信息：%w", err)
+	}
+	if token.Valid == false {
 		return nil, errors.New("登录令牌已经失效。")
 	}
 	return claims, nil
-}
-
-// Claims 登录令牌载荷，存放用户密码以外的各项信息。
-type Claims struct {
-	ID         *string `json:"id"`
-	Name       *string `json:"name"`
-	Login      *string `json:"login"`
-	Permission *string `json:"permission"`
-	jwt.RegisteredClaims
 }

@@ -87,7 +87,12 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 		return nil, errors.New("用户不存在或密码错误。")
 	}
 	// 返回用户令牌。
-	return nil, nil
+	token, err := IssueToken(account.Id, account.Name, account.Login, account.Password)
+	if err != nil {
+		return nil, err
+	}
+	// 返回用户令牌。
+	return token, nil
 }
 
 // Filter 查询系统用户。

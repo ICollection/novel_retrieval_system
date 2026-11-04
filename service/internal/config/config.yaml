@@ -5,7 +5,7 @@ web:
   # 上下文目录（接口路径前缀）
   context_path: /service
   # 运行模式：debug、release、test
-  mode: debug
+  mode: release
 
 # 登录令牌（JWT）
 token:
