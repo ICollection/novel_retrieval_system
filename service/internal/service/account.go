@@ -15,9 +15,13 @@ type AccountService struct {
 	postgre *storage.Postgre
 }
 
-// NewAccountService 创建系统用户服务。
-func NewAccountService(postgre *storage.Postgre) *AccountService {
-	return &AccountService{postgre: postgre}
+// createAccountService 创建系统用户服务。
+func createAccountService() (*AccountService, error) {
+	postgre, err := storage.CreatePostgre()
+	if err != nil {
+		return nil, err
+	}
+	return &AccountService{postgre: postgre}, nil
 }
 
 // Append 添加系统用户。
@@ -78,7 +82,7 @@ func (service *AccountService) Delete(ctx context.Context, id *string) (*string,
 // Verify 验证系统用户。
 func (service *AccountService) Verify(ctx context.Context, login *string, password *string) (*string, error) {
 	// 查询系统用户。
-	account, err := service.postgre.QuerySingle[Account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
+	account, err := service.postgre.QuerySingle[account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
 	if err != nil {
 		return nil, errors.New("用户不存在或密码错误。")
 	}
@@ -96,19 +100,19 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 }
 
 // Filter 查询系统用户。
-func (service *AccountService) Filter(ctx context.Context) ([]Account, error) {
-	result, err := service.postgre.QueryMatrix[Account](ctx, `select id,name,login,password,permission from account order by id;`)
+func (service *AccountService) Filter(ctx context.Context) ([]account, error) {
+	result, err := service.postgre.QueryMatrix[account](ctx, `select id,name,login,permission from account order by id;`)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-// Account 系统用户。
-type Account struct {
+// account 系统用户。
+type account struct {
 	Id         *string `db:"id" json:"id"`
 	Name       *string `db:"name" json:"name"`
 	Login      *string `db:"login" json:"login"`
-	Password   *string `db:"password" json:"password"`
-	Permission *string `db:"permission" json:"permission"`
+	Password   *string `db:"password" json:"-"`
+	Permission *string `db:"permission" json:"permission,omitempty"`
 }

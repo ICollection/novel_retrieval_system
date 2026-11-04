@@ -53,7 +53,7 @@ func (postgre *Postgre) QueryMatrix[T any](ctx context.Context, sql string, argu
 	if err != nil {
 		return nil, err
 	}
-	result, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
+	result, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[T])
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (postgre *Postgre) QuerySingle[T any](ctx context.Context, sql string, argu
 	if err != nil {
 		return nil, err
 	}
-	result, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[T])
+	result, err := pgx.CollectOneRow(rows, pgx.RowToStructByNameLax[T])
 	if err != nil {
 		return nil, err
 	}
