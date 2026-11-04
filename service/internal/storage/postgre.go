@@ -83,6 +83,21 @@ func (postgre *Postgre) QuerySimple[T any](ctx context.Context, sql string, argu
 	return &result, nil
 }
 
+// BeginTransaction 开始事务。
+func (postgre *Postgre) BeginTransaction(ctx context.Context) (pgx.Tx, error) {
+	return postgre.pool.BeginTx(ctx, pgx.TxOptions{})
+}
+
+// CommitTransaction 提交事务。
+func (postgre *Postgre) CommitTransaction(ctx context.Context, tx pgx.Tx) error {
+	return tx.Commit(ctx)
+}
+
+// RollbackTransaction 回滚事务。
+func (postgre *Postgre) RollbackTransaction(ctx context.Context, tx pgx.Tx) error {
+	return tx.Rollback(ctx)
+}
+
 // Close 关闭连接池。
 func (postgre *Postgre) Close() {
 	postgre.pool.Close()
