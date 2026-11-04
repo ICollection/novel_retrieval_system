@@ -1,6 +1,10 @@
 package service
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
+	"fmt"
+	"io"
 	"mime/multipart"
 	"path/filepath"
 	"service/internal/server"
@@ -41,12 +45,20 @@ func (service *OriginService) Upload(ctx *gin.Context, file multipart.File, head
 	kind = strings.ToLower(strings.TrimPrefix(kind, "."))
 	size := header.Size
 	// 获取文件内容。
-	hash := ""
-	// 插入系统用户。
-	err := service.postgre.QueryNaught(ctx, `insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7)`, id, name, kind, size, hash, cliam.Subject, time.Now())
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("读取文件失败，详细错误信息：%w", err)
+	}
+	hash := sha1.Sum(content)
+	// 上传对象存储。
+	if err := service.minio.Upload(ctx, "Origin", id+"."+kind, content, header.Header.Get("Content-Type")); err != nil {
+		return nil, fmt.Errorf("保存文件失败，详细错误信息：%w", err)
+	}
+	// 插入原始文件。
+	err = service.postgre.QueryNaught(ctx, `insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7)`, id, name, kind, size, base64.StdEncoding.EncodeToString(hash[:]), cliam.Subject, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	// 返沪用户编码。
+	// 返回文件编码。
 	return &id, nil
 }

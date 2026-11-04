@@ -38,7 +38,7 @@ func (service *AccountService) Append(ctx *gin.Context, name *string, login *str
 	if err != nil {
 		return nil, err
 	}
-	// 返沪用户编码。
+	// 返回用户编码。
 	return &id, nil
 }
 
