@@ -34,11 +34,21 @@ func TestLogin(ctx *gin.Context) {
 // TestPermit 验证用户权限。
 func TestPermit(permission string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		claims := ctx.MustGet("claims").(*Claims)
+		buffer := strings.TrimPrefix(ctx.GetHeader("Authorization"), "Bearer ")
+		if buffer == "" {
+			Failure(ctx, Failure401, "用户没有登录。")
+			return
+		}
+		claims, err := ParseToken(buffer)
+		if err != nil {
+			Failure(ctx, Failure401, err.Error())
+			return
+		}
 		if claims.HasPermission(permission) == false {
 			Failure(ctx, Failure403, "用户缺少权限。")
 			return
 		}
+		ctx.Set("claims", claims)
 		ctx.Next()
 	}
 }

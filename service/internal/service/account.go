@@ -1,12 +1,13 @@
 package service
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"service/internal/server"
 	"service/internal/storage"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,7 +27,9 @@ func createAccountService() (*AccountService, error) {
 }
 
 // Append 添加系统用户。
-func (service *AccountService) Append(ctx context.Context, name *string, login *string, password *string, permission *string) (*string, error) {
+func (service *AccountService) Append(ctx *gin.Context, name *string, login *string, password *string, permission *string) (*string, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	fmt.Println(claims.Subject)
 	id := strings.ToUpper(uuid.NewString())
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
@@ -43,7 +46,7 @@ func (service *AccountService) Append(ctx context.Context, name *string, login *
 }
 
 // Modify 修改系统用户。
-func (service *AccountService) Modify(ctx context.Context, id *string, name *string, permission *string) (*string, error) {
+func (service *AccountService) Modify(ctx *gin.Context, id *string, name *string, permission *string) (*string, error) {
 	// 修改系统用户。
 	err := service.postgre.QueryNaught(ctx, `update account set name=$2,permission=$3 where id=$1;`, id, name, permission)
 	if err != nil {
@@ -54,7 +57,7 @@ func (service *AccountService) Modify(ctx context.Context, id *string, name *str
 }
 
 // Change 改密系统用户。
-func (service *AccountService) Change(ctx context.Context, id *string, password *string) (*string, error) {
+func (service *AccountService) Change(ctx *gin.Context, id *string, password *string) (*string, error) {
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
 	if err != nil {
@@ -70,7 +73,7 @@ func (service *AccountService) Change(ctx context.Context, id *string, password 
 }
 
 // Delete 删除系统用户。
-func (service *AccountService) Delete(ctx context.Context, id *string) (*string, error) {
+func (service *AccountService) Delete(ctx *gin.Context, id *string) (*string, error) {
 	// 删除系统用户。
 	err := service.postgre.QueryNaught(ctx, `delete from account where id=$1;`, id)
 	if err != nil {
@@ -81,7 +84,7 @@ func (service *AccountService) Delete(ctx context.Context, id *string) (*string,
 }
 
 // Verify 验证系统用户。
-func (service *AccountService) Verify(ctx context.Context, login *string, password *string) (*string, error) {
+func (service *AccountService) Verify(ctx *gin.Context, login *string, password *string) (*string, error) {
 	// 查询系统用户。
 	account, err := service.postgre.QuerySingle[account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
 	if err != nil {
@@ -92,7 +95,7 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 		return nil, errors.New("用户不存在或密码错误。")
 	}
 	// 返回用户令牌。
-	token, err := server.IssueToken(account.Id, account.Name, account.Login, account.Password)
+	token, err := server.IssueToken(account.Id, account.Name, account.Login, account.Permission)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +104,7 @@ func (service *AccountService) Verify(ctx context.Context, login *string, passwo
 }
 
 // Filter 查询系统用户。
-func (service *AccountService) Filter(ctx context.Context) ([]account, error) {
+func (service *AccountService) Filter(ctx *gin.Context) ([]account, error) {
 	result, err := service.postgre.QueryMatrix[account](ctx, `select id,name,login,permission from account order by id;`)
 	if err != nil {
 		return nil, err

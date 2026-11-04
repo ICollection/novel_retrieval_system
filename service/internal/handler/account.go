@@ -26,12 +26,12 @@ func createAccountHandler() (*AccountHandler, error) {
 // register 注册路由分组。
 func (handler *AccountHandler) register(engine *gin.Engine) {
 	group := engine.Group(config.Config.Web.ContextPath + "/account")
-	group.POST("/append", handler.append, server.TestLogin, server.TestPermit(server.ManageUser))
-	group.PATCH("/modify", handler.modify, server.TestLogin, server.TestPermit(server.ManageUser))
-	group.PATCH("/change", handler.change, server.TestLogin, server.TestPermit(server.ManageUser))
-	group.DELETE("/delete", handler.delete, server.TestLogin, server.TestPermit(server.ManageUser))
+	group.POST("/append", server.TestPermit(server.ManageUser), handler.append)
+	group.PATCH("/modify", server.TestPermit(server.ManageUser), handler.modify)
+	group.PATCH("/change", server.TestPermit(server.ManageUser), handler.change)
+	group.DELETE("/delete", server.TestPermit(server.ManageUser), handler.delete)
 	group.GET("/verify", handler.verify)
-	group.GET("/filter", handler.filter, server.TestLogin)
+	group.GET("/filter", server.TestLogin, handler.filter)
 }
 
 // append 添加系统用户。

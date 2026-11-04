@@ -16,7 +16,7 @@ type Result struct {
 
 // Success 返回成功结果。
 func Success(ctx *gin.Context, content any) {
-	ctx.JSON(http.StatusOK, Result{Success: true, Failure: Success200, Message: nil, Content: content})
+	ctx.AbortWithStatusJSON(http.StatusOK, Result{Success: true, Failure: Success200, Message: nil, Content: content})
 }
 
 // Failure 返回失败结果。
