@@ -7,8 +7,11 @@ const route = useRoute()
 const router = useRouter()
 
 const activeKey = computed(() => (route.path.startsWith('/documents') ? 'documents' : 'chat'))
-const username = computed(() => getSession()?.username ?? '未登录')
-const initial = computed(() => username.value.slice(0, 1).toUpperCase())
+
+const session = getSession()
+const username = session?.name ?? '未登录'
+const loginName = session?.login ?? ''
+const initial = username.slice(0, 1).toUpperCase()
 
 function logout() {
   signOut()
@@ -25,6 +28,22 @@ function logout() {
           <strong>小说问答</strong>
           <span>NOVEL Q&amp;A</span>
         </div>
+      </div>
+
+      <div class="account">
+        <div class="user">
+          <div class="avatar">{{ initial }}</div>
+          <div class="user-copy">
+            <b>{{ username }}</b>
+            <i>{{ loginName }}</i>
+          </div>
+        </div>
+        <button class="logout" type="button" title="退出登录" @click="logout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M15 17v1.5A2.5 2.5 0 0 1 12.5 21h-6A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3h6A2.5 2.5 0 0 1 15 5.5V7" stroke-linecap="round" />
+            <path d="M10 12h10m0 0-3-3m3 3-3 3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
       </div>
 
       <nav class="nav">
@@ -60,22 +79,6 @@ function logout() {
           </span>
         </RouterLink>
       </nav>
-
-      <div class="sidebar-foot">
-        <div class="user">
-          <div class="avatar">{{ initial }}</div>
-          <div class="user-copy">
-            <b>{{ username }}</b>
-            <i>已登录</i>
-          </div>
-        </div>
-        <button class="logout" type="button" title="退出登录" @click="logout">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-            <path d="M15 17v1.5A2.5 2.5 0 0 1 12.5 21h-6A2.5 2.5 0 0 1 4 18.5v-13A2.5 2.5 0 0 1 6.5 3h6A2.5 2.5 0 0 1 15 5.5V7" stroke-linecap="round" />
-            <path d="M10 12h10m0 0-3-3m3 3-3 3" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </button>
-      </div>
     </aside>
 
     <main class="main">
@@ -222,12 +225,14 @@ function logout() {
   color: #9aa3b6;
 }
 
-.sidebar-foot {
+.account {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 10px 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin: 0 6px 18px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .user {

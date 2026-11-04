@@ -12,12 +12,12 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 
 const form = reactive({
-  username: '',
+  login: '',
   password: ''
 })
 
 const rules: FormRules<typeof form> = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  login: [{ required: true, message: '请输入登录名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
 
@@ -32,10 +32,8 @@ async function submit() {
 
   loading.value = true
   try {
-    // 演示用：模拟请求耗时，暂不调用后端
-    await new Promise((resolve) => setTimeout(resolve, 350))
-    const session = signIn(form.username, form.password)
-    ElMessage.success(`欢迎回来，${session.username}`)
+    const session = await signIn(form.login, form.password)
+    ElMessage.success(`欢迎回来，${session.name}`)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.replace(redirect)
   } catch (error) {
@@ -84,8 +82,8 @@ async function submit() {
           size="large"
           @submit.prevent="submit"
         >
-          <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="请输入用户名" autocomplete="username" />
+          <el-form-item label="登录名" prop="login">
+            <el-input v-model="form.login" placeholder="请输入登录名" autocomplete="username" />
           </el-form-item>
 
           <el-form-item label="密码" prop="password">
@@ -103,8 +101,6 @@ async function submit() {
             登录
           </el-button>
         </el-form>
-
-        <p class="hint">当前为演示环境，未连接后端，任意非空账号密码均可登录。</p>
       </section>
     </div>
   </div>
@@ -250,13 +246,6 @@ async function submit() {
 .submit {
   width: 100%;
   margin-top: 4px;
-}
-
-.hint {
-  margin: 22px 0 0;
-  color: var(--text-faint);
-  font-size: 12px;
-  line-height: 1.7;
 }
 
 @media (max-width: 720px) {
