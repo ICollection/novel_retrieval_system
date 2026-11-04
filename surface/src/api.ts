@@ -25,6 +25,8 @@ export interface RequestOptions {
   token?: string
   /** 查询参数，值为 undefined 时忽略。 */
   query?: Record<string, string | undefined>
+  /** 请求体，传 FormData 时由浏览器自动生成 multipart 边界。 */
+  body?: BodyInit
 }
 
 /** 调用后端接口，成功返回 content，失败抛出 ApiError。 */
@@ -41,7 +43,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     headers.Authorization = `Bearer ${options.token}`
   }
 
-  const response = await fetch(url, { method: options.method ?? 'GET', headers })
+  const response = await fetch(url, { method: options.method ?? 'GET', headers, body: options.body })
   if (!response.ok) {
     throw new ApiError(`请求失败（HTTP ${response.status}）`, response.status)
   }

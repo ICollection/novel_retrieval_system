@@ -98,6 +98,15 @@ func (postgre *Postgre) RollbackTransaction(ctx context.Context, tx pgx.Tx) erro
 	return tx.Rollback(ctx)
 }
 
+// BatchNaught 执行查询不返回值。
+func (postgre *Postgre) BatchNaught(ctx context.Context, tx pgx.Tx, sql string, arguments ...any) error {
+	_, err := tx.Exec(ctx, sql, arguments...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Close 关闭连接池。
 func (postgre *Postgre) Close() {
 	postgre.pool.Close()

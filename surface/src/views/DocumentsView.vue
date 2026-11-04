@@ -1,33 +1,33 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
+import { request } from '../api'
+import { getSession } from '../auth'
 
-type Status = 'pending' | 'parsing' | 'chunking' | 'embedding' | 'done' | 'failed'
-type TagType = 'info' | 'warning' | 'success' | 'danger' | undefined
+type Status = 'uploading' | 'done' | 'failed'
+type TagType = 'info' | 'success' | 'danger' | undefined
 
 interface DocFile {
   id: number
   name: string
   size: number
-  chapters: number
-  segments: number
-  embedded: number
-  percent: number
   status: Status
   time: string
+  /** 后端返回的原始文件编码 */
+  origin?: string
+  error?: string
 }
 
 const statusMeta: Record<Status, { label: string; type: TagType }> = {
-  pending: { label: '待处理', type: 'info' },
-  parsing: { label: '解析中', type: 'warning' },
-  chunking: { label: '切片中', type: 'warning' },
-  embedding: { label: '向量化中', type: undefined },
-  done: { label: '已完成', type: 'success' },
+  uploading: { label: '上传中', type: 'info' },
+  done: { label: '已上传', type: 'success' },
   failed: { label: '失败', type: 'danger' }
 }
 
-const timers = new Map<number, number>()
+const files = ref<DocFile[]>([])
+/** 保存本地文件句柄，用于失败重传（不放入响应式数据，避免代理干扰 FormData） */
+const raws = new Map<number, File>()
 let seq = 0
 
 const now = () =>
@@ -38,145 +38,78 @@ const now = () =>
     minute: '2-digit'
   })
 
-function createDoc(name: string, size: number): DocFile {
-  return {
-    id: ++seq,
-    name,
-    size,
-    chapters: 0,
-    segments: 0,
-    embedded: 0,
-    percent: 0,
-    status: 'pending',
-    time: now()
-  }
-}
-
-const files = ref<DocFile[]>([
-  {
-    id: ++seq,
-    name: '长夜行·全本.txt',
-    size: 3.4 * 1024 * 1024,
-    chapters: 128,
-    segments: 764,
-    embedded: 764,
-    percent: 100,
-    status: 'done',
-    time: '11月02日 21:14'
-  },
-  {
-    id: ++seq,
-    name: '雾中灯塔.txt',
-    size: 1.8 * 1024 * 1024,
-    chapters: 74,
-    segments: 442,
-    embedded: 274,
-    percent: 62,
-    status: 'embedding',
-    time: '11月03日 09:36'
-  },
-  {
-    id: ++seq,
-    name: '旧城纪事.txt',
-    size: 0.9 * 1024 * 1024,
-    chapters: 12,
-    segments: 68,
-    embedded: 0,
-    percent: 18,
-    status: 'failed',
-    time: '11月03日 10:02'
-  }
-])
-
-const stats = computed(() => {
-  const inProgress = files.value.filter((file) =>
-    ['pending', 'parsing', 'chunking', 'embedding'].includes(file.status)
-  ).length
-  return {
-    total: files.value.length,
-    done: files.value.filter((file) => file.status === 'done').length,
-    inProgress,
-    segments: files.value.reduce((sum, file) => sum + file.segments, 0)
-  }
-})
+const stats = computed(() => ({
+  total: files.value.length,
+  done: files.value.filter((file) => file.status === 'done').length,
+  failed: files.value.filter((file) => file.status === 'failed').length
+}))
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-function stopPipeline(id: number) {
-  const timer = timers.get(id)
-  if (timer !== undefined) {
-    window.clearInterval(timer)
-    timers.delete(id)
+/** 提交文件到后端原始文件接口。 */
+async function upload(doc: DocFile, raw: File) {
+  const session = getSession()
+  if (!session) {
+    doc.status = 'failed'
+    doc.error = '登录已失效，请重新登录。'
+    return
   }
-}
 
-function runPipeline(file: DocFile) {
-  stopPipeline(file.id)
-  file.status = 'parsing'
-  file.percent = 2
+  doc.status = 'uploading'
+  doc.error = undefined
 
-  const timer = window.setInterval(() => {
-    file.percent = Math.min(100, file.percent + Math.random() * 8 + 3)
+  const form = new FormData()
+  form.append('file', raw, raw.name)
 
-    if (file.percent < 30) {
-      file.status = 'parsing'
-    } else if (file.percent < 55) {
-      if (!file.chapters) {
-        file.chapters = 40 + Math.round(Math.random() * 80)
-        file.segments = file.chapters * (5 + Math.round(Math.random() * 3))
-      }
-      file.status = 'chunking'
-    } else if (file.percent < 100) {
-      file.status = 'embedding'
-      file.embedded = Math.round((file.segments * (file.percent - 55)) / 45)
-    } else {
-      file.percent = 100
-      file.embedded = file.segments
-      file.status = 'done'
-      stopPipeline(file.id)
-      ElMessage.success(`${file.name} 处理完成`)
-    }
-  }, 700)
-
-  timers.set(file.id, timer)
+  try {
+    const origin = await request<string>('/origin/upload', {
+      method: 'POST',
+      token: session.token,
+      body: form
+    })
+    doc.status = 'done'
+    doc.origin = origin
+    ElMessage.success(`上传成功：${doc.name}`)
+  } catch (error) {
+    doc.status = 'failed'
+    doc.error = error instanceof Error ? error.message : '上传失败'
+    ElMessage.error(`${doc.name} 上传失败：${doc.error}`)
+  }
 }
 
 function handleChange(uploadFile: UploadFile) {
   const raw = uploadFile.raw
   if (!raw) return
 
-  const doc = createDoc(raw.name, raw.size)
+  const doc = reactive<DocFile>({
+    id: ++seq,
+    name: raw.name,
+    size: raw.size,
+    status: 'uploading',
+    time: now()
+  })
   files.value.unshift(doc)
-  runPipeline(doc)
-  ElMessage.success(`已加入处理队列：${raw.name}`)
+  raws.set(doc.id, raw)
+  void upload(doc, raw)
 }
 
 function retry(file: DocFile) {
-  file.embedded = 0
-  file.percent = 0
-  file.status = 'pending'
-  runPipeline(file)
+  const raw = raws.get(file.id)
+  if (!raw) {
+    ElMessage.warning('本地文件已释放，请重新选择文件上传。')
+    return
+  }
+  void upload(file, raw)
 }
 
 function remove(file: DocFile) {
-  stopPipeline(file.id)
+  raws.delete(file.id)
   files.value = files.value.filter((item) => item.id !== file.id)
   ElMessage.info(`已移除：${file.name}`)
 }
-
-function progressStatus(file: DocFile): '' | 'success' | 'exception' {
-  if (file.status === 'done') return 'success'
-  if (file.status === 'failed') return 'exception'
-  return ''
-}
-
-onBeforeUnmount(() => {
-  timers.forEach((timer) => window.clearInterval(timer))
-  timers.clear()
-})
 </script>
 
 <template>
@@ -184,9 +117,9 @@ onBeforeUnmount(() => {
     <header class="page-head docs-head">
       <div>
         <h1>文档处理</h1>
-        <p>上传小说 txt，查看解析、切片与向量化的处理状态</p>
+        <p>上传小说 txt，文件写入对象存储并登记处理记录</p>
       </div>
-      <span class="conn-badge"><i />界面演示</span>
+      <span class="conn-badge"><i />已连接后端</span>
     </header>
 
     <section class="stats">
@@ -195,16 +128,12 @@ onBeforeUnmount(() => {
         <strong>{{ stats.total }}</strong>
       </div>
       <div class="stat">
-        <span class="stat-label">已完成</span>
+        <span class="stat-label">上传成功</span>
         <strong class="ok">{{ stats.done }}</strong>
       </div>
       <div class="stat">
-        <span class="stat-label">处理中</span>
-        <strong class="busy">{{ stats.inProgress }}</strong>
-      </div>
-      <div class="stat">
-        <span class="stat-label">切片总量</span>
-        <strong>{{ stats.segments }}</strong>
+        <span class="stat-label">上传失败</span>
+        <strong class="busy">{{ stats.failed }}</strong>
       </div>
     </section>
 
@@ -237,16 +166,16 @@ onBeforeUnmount(() => {
       </el-upload>
 
       <p class="flow-hint">
-        <span>处理流程</span>
-        解析章节 → 文本切片 → 向量化入库，状态与进度会自动刷新
+        <span>上传流程</span>
+        文件存入 MinIO 的 Origin 目录 → 登记 origin / novel / progress 记录
       </p>
     </section>
 
     <section class="card">
       <div class="card-head">
         <div>
-          <h2>文件列表</h2>
-          <p>共 {{ files.length }} 个文件，失败文件可重试</p>
+          <h2>上传记录</h2>
+          <p>共 {{ files.length }} 个文件，失败的文件可重新上传</p>
         </div>
       </div>
 
@@ -257,23 +186,16 @@ onBeforeUnmount(() => {
               <div class="file-icon">TXT</div>
               <div class="file-copy">
                 <span class="file-name">{{ row.name }}</span>
-                <span class="file-sub">{{ row.time }} · {{ formatSize(row.size) }}</span>
+                <span class="file-sub">
+                  {{ row.time }} · {{ formatSize(row.size) }}
+                  <template v-if="row.error"> · {{ row.error }}</template>
+                </span>
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="内容规模" min-width="150">
-          <template #default="{ row }">
-            <div class="scale-cell">
-              <span>{{ row.chapters ? `${row.chapters} 章` : '—' }}</span>
-              <i>·</i>
-              <span>{{ row.segments ? `${row.segments} 切片` : '待切片' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="状态" width="120">
+        <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag :type="statusMeta[row.status as Status].type" effect="light" round size="small">
               {{ statusMeta[row.status as Status].label }}
@@ -281,22 +203,9 @@ onBeforeUnmount(() => {
           </template>
         </el-table-column>
 
-        <el-table-column label="进度" min-width="180">
+        <el-table-column label="原始文件编码" min-width="300">
           <template #default="{ row }">
-            <div class="progress-cell">
-              <el-progress
-                :percentage="Math.round(row.percent)"
-                :status="progressStatus(row as DocFile)"
-                :stroke-width="6"
-                :show-text="false"
-              />
-              <span class="progress-text">
-                {{ Math.round(row.percent) }}%
-                <template v-if="row.status === 'embedding'">
-                  ({{ row.embedded }}/{{ row.segments }})
-                </template>
-              </span>
-            </div>
+            <span class="origin-id">{{ row.origin ?? '—' }}</span>
           </template>
         </el-table-column>
 
@@ -310,7 +219,7 @@ onBeforeUnmount(() => {
             >
               重试
             </el-button>
-            <el-button link type="danger" @click="remove(row as DocFile)">删除</el-button>
+            <el-button link type="danger" @click="remove(row as DocFile)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -348,13 +257,13 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #f0b429;
+  background: #16a34a;
 }
 
 /* 统计 */
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   max-width: 1080px;
   margin: 0 auto 16px;
@@ -386,7 +295,7 @@ onBeforeUnmount(() => {
 }
 
 .stat strong.busy {
-  color: var(--brand);
+  color: #dc2626;
 }
 
 /* 卡片 */
@@ -545,38 +454,14 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
 }
 
-.scale-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-sub);
-  font-size: 12.5px;
-}
-
-.scale-cell i {
-  color: var(--line-strong);
-  font-style: normal;
-}
-
-.progress-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.progress-cell :deep(.el-progress) {
-  flex: 1;
-  min-width: 60px;
-}
-
-.progress-text {
-  width: 104px;
-  flex: 0 0 auto;
-  color: var(--text-sub);
+.origin-id {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+  color: var(--text-sub);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 900px) {
