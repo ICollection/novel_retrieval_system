@@ -48,7 +48,7 @@ func (service *OriginService) Upload(ctx *gin.Context, file multipart.File, head
 	moment := time.Now()
 	origin_id := strings.ToUpper(uuid.NewV4().String())
 	novel_id := strings.ToUpper(uuid.NewV4().String())
-	progress_id := strings.ToUpper(uuid.NewV4().String())
+	mission_id := strings.ToUpper(uuid.NewV4().String())
 	kind := filepath.Ext(header.Filename)
 	name := strings.TrimSuffix(header.Filename, kind)
 	kind = strings.ToLower(strings.TrimPrefix(kind, "."))
@@ -89,7 +89,7 @@ func (service *OriginService) Upload(ctx *gin.Context, file multipart.File, head
 		return nil, err
 	}
 	// 插入进度记录。
-	err = service.postgre.BatchNaught(ctx, transaction, `insert into progress(id,novel,status,total_count,embed_count,launch_time,finish_time) values($1,$2,$3,$4,$5,$6,$7)`, progress_id, novel_id, "01", 0, 0, nil, nil)
+	err = service.postgre.BatchNaught(ctx, transaction, `insert into mission(id,novel,status,total_count,embed_count,lanuch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
 	if err != nil {
 		return nil, err
 	}
