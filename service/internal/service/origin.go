@@ -17,6 +17,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// allows 允许文件类型。
+var allows = map[string]struct{}{
+	"txt": {},
+}
+
 // OriginService 原始文件服务。
 type OriginService struct {
 	postgre *storage.Postgre
@@ -48,6 +53,10 @@ func (service *OriginService) Upload(ctx *gin.Context, file multipart.File, head
 	name := strings.TrimSuffix(header.Filename, kind)
 	kind = strings.ToLower(strings.TrimPrefix(kind, "."))
 	size := header.Size
+	// 校验文件扩展名。
+	if _, exist := allows[kind]; exist == false {
+		return nil, errors.New("文件类型错误。")
+	}
 	// 获取文件内容。
 	content, err := io.ReadAll(file)
 	if err != nil {
