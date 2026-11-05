@@ -95,8 +95,44 @@ func release(mission string) {
 // handle 处理单个任务。
 func handle(ctx context.Context, mission *mission) {
 	defer release(*mission.Mission)
-	if ctx.Err() != nil {
-		return
+	status := *mission.Status
+	// 开始执行操作。
+	if status == common.MissionStatus02 {
+		// 验证取消状态。
+		if ctx.Err() != nil {
+			return
+		}
+		// 更新任务状态。
+		err := storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus03, time.Now().UTC(), mission.Mission)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 记录成功日志。
+		log.Println("开始解析文件成功，原始文件：", *mission.Origin+"."+*mission.Type)
+		status = common.MissionStatus03
+	}
+	// 执行归一操作。
+	if status == common.MissionStatus03 {
+		// 验证取消状态。
+		if ctx.Err() != nil {
+			return
+		}
+		// 执行归一操作。
+		err := normalize(*mission.Origin, *mission.Type)
+		if err != nil {
+			log.Println("执行归一操作失败，详细错误信息：", err.Error())
+			return
+		}
+		// 更新任务状态。
+		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus04, time.Now().UTC(), mission.Mission)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 记录成功日志。
+		log.Println("执行归一操作成功，归一文件：", *mission.Origin+".md")
+		status = common.MissionStatus04
 	}
 	//TODO 执行一些方法。
 	if ctx.Err() != nil {
