@@ -77,10 +77,3 @@ func ParseToken(buffer string) (*Claims, error) {
 	}
 	return claims, nil
 }
-
-// 用户权限。
-const (
-	ManageUser  string = "ManageUser"
-	UploadNovel string = "UploadNovel"
-	HandleNovel string = "HandleNovel"
-)

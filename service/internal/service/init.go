@@ -1,13 +1,20 @@
 package service
 
-// Account 系统用户服务。
-var AccountService *accountService = nil
-
-// Origin 原始文件服务。
-var OriginService *originService = nil
+var (
+	// Account 系统用户服务。
+	Account *accountService = nil
+	// Origin 原始文件服务。
+	Origin *originService = nil
+	// Novel 小说对象服务。
+	Novel *novelService = nil
+	// Mission 分析任务服务。
+	Mission *missionService = nil
+)
 
 // Initalize 初始化服务层。
 func Initalize() {
-	AccountService = &accountService{}
-	OriginService = &originService{}
+	Account = &accountService{}
+	Origin = &originService{}
+	Novel = &novelService{}
+	Mission = &missionService{}
 }

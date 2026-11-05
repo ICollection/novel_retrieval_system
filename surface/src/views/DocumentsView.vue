@@ -1,82 +1,171 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+/**
+ * 文档处理页面。
+ *
+ * 页面分三块：上传文件、任务列表（控制启动/取消/重试）、小说列表（内容信息）。
+ * 任务与小说的数据都来自 GET /novel/list，前端按状态过滤。
+ */
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { request } from '../api'
-import { getSession } from '../auth'
+import { getSession, hasPermission } from '../auth'
 
-type Status = 'uploading' | 'done' | 'failed'
-type TagType = 'info' | 'success' | 'danger' | undefined
+/** 后端返回的小说与任务信息。 */
+interface DocItem {
+  /** 小说标识 */
+  id: string
+  /** 书名 */
+  title?: string
+  /** 字符数 */
+  character_count?: number
+  /** 章节数 */
+  chapter_count?: number
+  /** 创建时间 */
+  create_time?: string
+  /** 进度最后更新时间 */
+  update_time?: string
+  /** 任务状态，01 待启动、02 已启动、03 解析中、04 切分中、05 向量中、06 已完成、07 已失败、08 已取消 */
+  status?: string
+  /** 分片总数 */
+  total_count?: number
+  /** 已向量化数量 */
+  embed_count?: number
+  /** 失败原因 */
+  message?: string
+  /** 重试次数 */
+  retry_count?: number
+}
 
-interface DocFile {
-  id: number
+type TagType = 'success' | 'info' | 'warning' | 'danger' | undefined
+
+/** 任务状态展示信息。 */
+const statusMeta: Record<string, { label: string; type: TagType }> = {
+  '01': { label: '待启动', type: 'info' },
+  '02': { label: '已启动', type: 'info' },
+  '03': { label: '解析中', type: 'warning' },
+  '04': { label: '切分中', type: 'warning' },
+  '05': { label: '向量中', type: 'warning' },
+  '06': { label: '已完成', type: 'success' },
+  '07': { label: '已失败', type: 'danger' },
+  '08': { label: '已取消', type: 'info' }
+}
+
+/** 正在处理中的状态。 */
+const runningStatus = ['02', '03', '04', '05']
+
+/** 本地上传条目，只保留上传中和失败的记录。 */
+interface LocalFile {
+  key: number
   name: string
   size: number
-  status: Status
-  time: string
-  /** 后端返回的原始文件编码 */
-  origin?: string
+  status: 'uploading' | 'failed'
   error?: string
 }
 
-const statusMeta: Record<Status, { label: string; type: TagType }> = {
-  uploading: { label: '上传中', type: 'info' },
-  done: { label: '已上传', type: 'success' },
-  failed: { label: '失败', type: 'danger' }
-}
-
-const files = ref<DocFile[]>([])
-/** 保存本地文件句柄，用于失败重传（不放入响应式数据，避免代理干扰 FormData） */
+const files = ref<LocalFile[]>([])
+/** 本地文件句柄，用于失败重传（不放入响应式数据，避免代理干扰 FormData） */
 const raws = new Map<number, File>()
 let seq = 0
 
-const now = () =>
-  new Date().toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+const items = ref<DocItem[]>([])
+const loading = ref(false)
+const listError = ref('')
+const keyword = ref('')
+const tab = ref<'task' | 'novel'>('task')
 
-const stats = computed(() => ({
-  total: files.value.length,
-  done: files.value.filter((file) => file.status === 'done').length,
-  failed: files.value.filter((file) => file.status === 'failed').length
-}))
+const session = getSession()
+const canUpload = hasPermission(session?.permission, 'UploadNovel')
+const canHandle = hasPermission(session?.permission, 'HandleNovel')
+
+/** 当前筛选后的小说。 */
+const filtered = computed(() => {
+  const text = keyword.value.trim()
+  if (!text) return items.value
+  return items.value.filter((item) => (item.title ?? '').includes(text))
+})
+
+/** 任务视图：排除已完成的小说。 */
+const tasks = computed(() => filtered.value.filter((item) => item.status !== '06'))
+
+/** 是否有正在处理的任务，决定是否轮询。 */
+const hasRunning = computed(() => items.value.some((item) => runningStatus.includes(item.status ?? '')))
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-/** 提交文件到后端原始文件接口。 */
-async function upload(doc: DocFile, raw: File) {
-  const session = getSession()
+function formatTime(value?: string) {
+  if (!value) return '—'
+  const moment = new Date(value)
+  if (Number.isNaN(moment.getTime())) return value
+  return moment.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function meta(status?: string) {
+  return statusMeta[status ?? ''] ?? { label: '未知', type: undefined }
+}
+
+/** 向量化进度百分比。 */
+function percent(item: DocItem) {
+  if (!item.total_count || item.total_count <= 0) return 0
+  return Math.min(100, Math.round(((item.embed_count ?? 0) / item.total_count) * 100))
+}
+
+/** 拉取小说与任务列表。 */
+async function refresh(silent = false) {
   if (!session) {
-    doc.status = 'failed'
-    doc.error = '登录已失效，请重新登录。'
+    listError.value = '登录已失效，请重新登录。'
+    return
+  }
+  if (!silent) loading.value = true
+  try {
+    const content = await request<DocItem[]>('/novel/list', { token: session.token })
+    items.value = Array.isArray(content) ? content : []
+    listError.value = ''
+  } catch (error) {
+    listError.value = error instanceof Error ? error.message : '加载失败'
+    if (!silent) ElMessage.error(listError.value)
+  } finally {
+    loading.value = false
+    ensurePolling()
+  }
+}
+
+/** 提交文件到后端原始文件接口，成功后刷新列表。 */
+async function upload(file: LocalFile, raw: File) {
+  if (!session) {
+    file.status = 'failed'
+    file.error = '登录已失效，请重新登录。'
     return
   }
 
-  doc.status = 'uploading'
-  doc.error = undefined
+  file.status = 'uploading'
+  file.error = undefined
 
   const form = new FormData()
   form.append('file', raw, raw.name)
 
   try {
-    const origin = await request<string>('/origin/upload', {
+    await request<string>('/origin/upload', {
       method: 'POST',
       token: session.token,
       body: form
     })
-    doc.status = 'done'
-    doc.origin = origin
-    ElMessage.success(`上传成功：${doc.name}`)
+    files.value = files.value.filter((item) => item.key !== file.key)
+    raws.delete(file.key)
+    ElMessage.success(`上传成功：${file.name}`)
+    await refresh(true)
   } catch (error) {
-    doc.status = 'failed'
-    doc.error = error instanceof Error ? error.message : '上传失败'
-    ElMessage.error(`${doc.name} 上传失败：${doc.error}`)
+    file.status = 'failed'
+    file.error = error instanceof Error ? error.message : '上传失败'
+    ElMessage.error(`${file.name} 上传失败：${file.error}`)
   }
 }
 
@@ -84,20 +173,19 @@ function handleChange(uploadFile: UploadFile) {
   const raw = uploadFile.raw
   if (!raw) return
 
-  const doc = reactive<DocFile>({
-    id: ++seq,
+  const file = reactive<LocalFile>({
+    key: ++seq,
     name: raw.name,
     size: raw.size,
-    status: 'uploading',
-    time: now()
+    status: 'uploading'
   })
-  files.value.unshift(doc)
-  raws.set(doc.id, raw)
-  void upload(doc, raw)
+  files.value.unshift(file)
+  raws.set(file.key, raw)
+  void upload(file, raw)
 }
 
-function retry(file: DocFile) {
-  const raw = raws.get(file.id)
+function retryUpload(file: LocalFile) {
+  const raw = raws.get(file.key)
   if (!raw) {
     ElMessage.warning('本地文件已释放，请重新选择文件上传。')
     return
@@ -105,11 +193,90 @@ function retry(file: DocFile) {
   void upload(file, raw)
 }
 
-function remove(file: DocFile) {
-  raws.delete(file.id)
-  files.value = files.value.filter((item) => item.id !== file.id)
-  ElMessage.info(`已移除：${file.name}`)
+function removeUpload(file: LocalFile) {
+  raws.delete(file.key)
+  files.value = files.value.filter((item) => item.key !== file.key)
 }
+
+/** 修改任务状态。 */
+async function act(path: string, item: DocItem, message: string) {
+  if (!session) return
+  try {
+    await request<unknown>(path, {
+      method: 'POST',
+      token: session.token,
+      query: { novel: item.id }
+    })
+    ElMessage.success(message)
+    await refresh(true)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '操作失败')
+  }
+}
+
+function launch(item: DocItem) {
+  void act('/mission/launch', item, `已启动：${item.title ?? item.id}`)
+}
+
+async function cancel(item: DocItem) {
+  try {
+    await ElMessageBox.confirm(
+      `取消后当前处理会停止，已完成的解析与切片会保留，下次启动可继续。确定取消《${item.title ?? item.id}》吗？`,
+      '取消任务',
+      { type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  void act('/mission/cancel', item, `已取消：${item.title ?? item.id}`)
+}
+
+async function retry(item: DocItem) {
+  try {
+    await ElMessageBox.confirm(
+      `重试会从当前阶段继续，已完成的解析与切片不会重做。确定重试《${item.title ?? item.id}》吗？`,
+      '重试任务',
+      { type: 'warning', confirmButtonText: '确定重试', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  void act('/mission/retry', item, `已提交重试：${item.title ?? item.id}`)
+}
+
+/** 轮询：只在进行中任务存在时启动，页面隐藏时暂停。 */
+let timer: number | undefined
+
+function stopPolling() {
+  if (timer !== undefined) {
+    window.clearInterval(timer)
+    timer = undefined
+  }
+}
+
+function ensurePolling() {
+  if (hasRunning.value && document.visibilityState === 'visible') {
+    if (timer === undefined) {
+      timer = window.setInterval(() => void refresh(true), 3000)
+    }
+  } else {
+    stopPolling()
+  }
+}
+
+function onVisibilityChange() {
+  ensurePolling()
+}
+
+onMounted(() => {
+  void refresh()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 
 <template>
@@ -117,31 +284,16 @@ function remove(file: DocFile) {
     <header class="page-head docs-head">
       <div>
         <h1>文档处理</h1>
-        <p>上传小说 txt，文件写入对象存储并登记处理记录</p>
+        <p>上传小说文件，启动处理后可在任务与小说列表中查看进度</p>
       </div>
       <span class="conn-badge"><i />已连接后端</span>
     </header>
-
-    <section class="stats">
-      <div class="stat">
-        <span class="stat-label">文件总数</span>
-        <strong>{{ stats.total }}</strong>
-      </div>
-      <div class="stat">
-        <span class="stat-label">上传成功</span>
-        <strong class="ok">{{ stats.done }}</strong>
-      </div>
-      <div class="stat">
-        <span class="stat-label">上传失败</span>
-        <strong class="busy">{{ stats.failed }}</strong>
-      </div>
-    </section>
 
     <section class="card">
       <div class="card-head">
         <div>
           <h2>上传文件</h2>
-          <p>拖拽或点击选择，支持一次选择多个 txt 文件</p>
+          <p>拖拽或点击选择，支持一次选择多个文件</p>
         </div>
       </div>
 
@@ -149,7 +301,8 @@ function remove(file: DocFile) {
         class="uploader"
         drag
         multiple
-        accept=".txt"
+        accept=".txt,.md"
+        :disabled="!canUpload"
         :auto-upload="false"
         :show-file-list="false"
         :on-change="handleChange"
@@ -161,70 +314,164 @@ function remove(file: DocFile) {
             <path d="M4.5 15v2.5A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5V15" stroke-linecap="round" />
           </svg>
           <p class="upload-title">拖拽文件到此处，或<em>点击选择</em></p>
-          <p class="upload-sub">仅支持 .txt，建议使用 UTF-8 编码，单个文件不超过 50MB</p>
+          <p class="upload-sub">
+            支持 .txt、.md，建议使用 UTF-8 编码，单个文件不超过 50MB
+          </p>
         </div>
       </el-upload>
 
+      <p v-if="!canUpload" class="permission-hint">当前账号没有上传小说权限，上传功能已禁用。</p>
+
+      <div v-if="files.length" class="upload-list">
+        <div v-for="file in files" :key="file.key" class="upload-item">
+          <span class="upload-name">{{ file.name }}</span>
+          <span class="upload-size">{{ formatSize(file.size) }}</span>
+          <el-tag v-if="file.status === 'uploading'" type="info" effect="light" size="small" round>上传中</el-tag>
+          <el-tooltip v-else :content="file.error ?? '上传失败'" placement="top">
+            <el-tag type="danger" effect="light" size="small" round>失败</el-tag>
+          </el-tooltip>
+          <el-button v-if="file.status === 'failed'" link type="primary" @click="retryUpload(file)">重试</el-button>
+          <el-button link type="danger" @click="removeUpload(file)">移除</el-button>
+        </div>
+      </div>
+
       <p class="flow-hint">
-        <span>上传流程</span>
-        文件存入 MinIO 的 Origin 目录 → 登记 origin / novel / progress 记录
+        <span>处理流程</span>
+        文件存入 Origin 目录 → 归一化到 Normal 目录 → 生成章节与分片 → 写入向量库
       </p>
     </section>
 
     <section class="card">
-      <div class="card-head">
-        <div>
-          <h2>上传记录</h2>
-          <p>共 {{ files.length }} 个文件，失败的文件可重新上传</p>
+      <div class="list-head">
+        <el-tabs v-model="tab" class="list-tabs">
+          <el-tab-pane :label="`任务（${tasks.length}）`" name="task" />
+          <el-tab-pane :label="`小说（${filtered.length}）`" name="novel" />
+        </el-tabs>
+        <div class="list-tools">
+          <el-input v-model="keyword" placeholder="搜索书名" clearable size="small" class="search" />
+          <el-button size="small" :loading="loading" @click="refresh()">刷新</el-button>
         </div>
       </div>
 
-      <el-table v-if="files.length" :data="files" row-key="id" class="file-table">
-        <el-table-column label="文件" min-width="260">
+      <p v-if="listError" class="list-error">{{ listError }}</p>
+
+      <!-- 任务视图 -->
+      <el-table v-if="tab === 'task'" v-loading="loading" :data="tasks" row-key="id" class="doc-table">
+        <el-table-column label="书名" min-width="220">
           <template #default="{ row }">
-            <div class="file-cell">
-              <div class="file-icon">TXT</div>
-              <div class="file-copy">
-                <span class="file-name">{{ row.name }}</span>
-                <span class="file-sub">
-                  {{ row.time }} · {{ formatSize(row.size) }}
-                  <template v-if="row.error"> · {{ row.error }}</template>
-                </span>
-              </div>
-            </div>
+            <span class="doc-title">{{ row.title || '未命名' }}</span>
+            <span class="doc-sub">
+              章节 {{ row.chapter_count ?? 0 }} · 字数 {{ row.character_count ?? 0 }}
+            </span>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="110">
+        <el-table-column label="状态" width="130">
           <template #default="{ row }">
-            <el-tag :type="statusMeta[row.status as Status].type" effect="light" round size="small">
-              {{ statusMeta[row.status as Status].label }}
+            <el-tooltip v-if="row.status === '07' && row.message" :content="row.message" placement="top">
+              <el-tag :type="meta(row.status).type" effect="light" size="small" round>
+                {{ meta(row.status).label }}
+              </el-tag>
+            </el-tooltip>
+            <el-tag v-else :type="meta(row.status).type" effect="light" size="small" round>
+              {{ meta(row.status).label }}
             </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="原始文件编码" min-width="300">
+        <el-table-column label="进度" min-width="180">
           <template #default="{ row }">
-            <span class="origin-id">{{ row.origin ?? '—' }}</span>
+            <el-progress
+              v-if="row.status === '05' && row.total_count > 0"
+              :percentage="percent(row)"
+              :stroke-width="8"
+            />
+            <span v-else-if="runningStatus.includes(row.status)" class="doc-sub">
+              分片计算中…
+            </span>
+            <span v-else class="doc-sub">—</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="130" align="right">
+        <el-table-column label="更新时间" width="130">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ formatTime(row.update_time ?? row.create_time) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="150" align="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 'failed'"
+              v-if="['01', '08'].includes(row.status)"
               link
               type="primary"
-              @click="retry(row as DocFile)"
+              :disabled="!canHandle"
+              @click="launch(row)"
+            >
+              启动
+            </el-button>
+            <el-button
+              v-if="runningStatus.includes(row.status)"
+              link
+              type="danger"
+              :disabled="!canHandle"
+              @click="cancel(row)"
+            >
+              取消
+            </el-button>
+            <el-button
+              v-if="row.status === '07'"
+              link
+              type="primary"
+              :disabled="!canHandle"
+              @click="retry(row)"
             >
               重试
             </el-button>
-            <el-button link type="danger" @click="remove(row as DocFile)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-else description="还没有上传文件，先选择一个 txt 小说吧" :image-size="90" />
+      <!-- 小说视图 -->
+      <el-table v-else v-loading="loading" :data="filtered" row-key="id" class="doc-table">
+        <el-table-column label="书名" min-width="260">
+          <template #default="{ row }">
+            <span class="doc-title">{{ row.title || '未命名' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="字数" width="120">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ row.character_count ?? 0 }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="章节数" width="110">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ row.chapter_count ?? 0 }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }">
+            <el-tag :type="meta(row.status).type" effect="light" size="small" round>
+              {{ meta(row.status).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ formatTime(row.create_time) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty
+        v-if="!loading && !listError && (tab === 'task' ? tasks.length === 0 : filtered.length === 0)"
+        :description="tab === 'task' ? '暂无待处理任务' : '还没有小说，先上传一个文件吧'"
+        :image-size="90"
+      />
     </section>
   </div>
 </template>
@@ -258,44 +505,6 @@ function remove(file: DocFile) {
   height: 6px;
   border-radius: 50%;
   background: #16a34a;
-}
-
-/* 统计 */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  max-width: 1080px;
-  margin: 0 auto 16px;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-}
-
-.stat-label {
-  color: var(--text-sub);
-  font-size: 12px;
-}
-
-.stat strong {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-}
-
-.stat strong.ok {
-  color: #16a34a;
-}
-
-.stat strong.busy {
-  color: #dc2626;
 }
 
 /* 卡片 */
@@ -382,6 +591,45 @@ function remove(file: DocFile) {
   font-size: 12px;
 }
 
+.permission-hint {
+  margin: 12px 0 0;
+  color: #b45309;
+  font-size: 12.5px;
+}
+
+/* 本地上传条目 */
+.upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.upload-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfbfe;
+}
+
+.upload-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-size {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
 .flow-hint {
   display: flex;
   align-items: center;
@@ -399,78 +647,83 @@ function remove(file: DocFile) {
   font-size: 11.5px;
 }
 
-/* 文件表格 */
-.file-table {
+/* 列表头部 */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.list-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.list-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.search {
+  width: 180px;
+}
+
+.list-error {
+  margin: 6px 0 10px;
+  color: #dc2626;
+  font-size: 12.5px;
+}
+
+/* 表格 */
+.doc-table {
   width: 100%;
 }
 
-.file-table :deep(th.el-table__cell) {
+.doc-table :deep(th.el-table__cell) {
   background: #fafbfd;
   font-weight: 500;
   color: var(--text-sub);
 }
 
-.file-table :deep(td.el-table__cell) {
-  padding: 13px 0;
+.doc-table :deep(td.el-table__cell) {
+  padding: 12px 0;
 }
 
-.file-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.file-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  border-radius: 9px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-}
-
-.file-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.file-name {
+.doc-title {
+  display: block;
   font-size: 13.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.file-sub {
+.doc-sub {
+  display: block;
+  margin-top: 3px;
   color: var(--text-faint);
   font-size: 11.5px;
 }
 
-.origin-id {
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 12px;
-  color: var(--text-sub);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 @media (max-width: 900px) {
-  .stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .docs {
     padding: 18px 16px 32px;
+  }
+
+  .list-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search {
+    width: 100%;
   }
 }
 </style>

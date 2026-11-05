@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"service/internal/common"
 	"service/internal/config"
 	"service/internal/server"
 	"service/internal/service"
@@ -8,19 +9,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// OriginHandler 原始文件处理器。
-type OriginHandler struct {
+// originHandler 原始文件处理器。
+type originHandler struct {
 	handler
 }
 
 // register 注册路由分组。
-func (handler *OriginHandler) register(engine *gin.Engine) {
+func (handler *originHandler) register(engine *gin.Engine) {
 	group := engine.Group(config.Config.Station.ContextPath + "/origin")
-	group.POST("/upload", server.TestPermit(server.UploadNovel), handler.upload)
+	group.POST("/upload", server.TestPermit(common.PermissionManageOrigin), handler.upload)
 }
 
 // upload 上传原始文件。
-func (handler *OriginHandler) upload(ctx *gin.Context) {
+func (handler *originHandler) upload(ctx *gin.Context) {
 	// 获取输入参数。
 	file, header, err := ctx.Request.FormFile("file")
 	if err != nil {
@@ -28,7 +29,7 @@ func (handler *OriginHandler) upload(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.OriginService.Upload(ctx, file, header)
+	result, err := service.Origin.Upload(ctx, file, header)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return

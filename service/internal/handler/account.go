@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"service/internal/common"
 	"service/internal/config"
 	"service/internal/server"
 	"service/internal/service"
@@ -8,24 +9,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AccountHandler 系统用户处理器。
-type AccountHandler struct {
+// accountHandler 系统用户处理器。
+type accountHandler struct {
 	handler
 }
 
 // register 注册路由分组。
-func (handler *AccountHandler) register(engine *gin.Engine) {
+func (handler *accountHandler) register(engine *gin.Engine) {
 	group := engine.Group(config.Config.Station.ContextPath + "/account")
-	group.POST("/append", server.TestPermit(server.ManageUser), handler.append)
-	group.PATCH("/modify", server.TestPermit(server.ManageUser), handler.modify)
-	group.PATCH("/change", server.TestPermit(server.ManageUser), handler.change)
-	group.DELETE("/delete", server.TestPermit(server.ManageUser), handler.delete)
+	group.POST("/append", server.TestPermit(common.PermissionManageUser), handler.append)
+	group.PATCH("/modify", server.TestPermit(common.PermissionManageUser), handler.modify)
+	group.PATCH("/change", server.TestPermit(common.PermissionManageUser), handler.change)
+	group.DELETE("/delete", server.TestPermit(common.PermissionManageUser), handler.delete)
 	group.GET("/verify", handler.verify)
 	group.GET("/filter", server.TestLogin, handler.filter)
 }
 
 // append 添加系统用户。
-func (handler *AccountHandler) append(ctx *gin.Context) {
+func (handler *accountHandler) append(ctx *gin.Context) {
 	// 获取输入参数。
 	name := handler.getString(ctx, "name")
 	login := handler.getString(ctx, "login")
@@ -37,7 +38,7 @@ func (handler *AccountHandler) append(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.AccountService.Append(ctx, name, login, password, permission)
+	result, err := service.Account.Append(ctx, name, login, password, permission)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -47,7 +48,7 @@ func (handler *AccountHandler) append(ctx *gin.Context) {
 }
 
 // modify 修改系统用户。
-func (handler *AccountHandler) modify(ctx *gin.Context) {
+func (handler *accountHandler) modify(ctx *gin.Context) {
 	// 获取输入参数。
 	id := handler.getString(ctx, "id")
 	name := handler.getString(ctx, "name")
@@ -58,7 +59,7 @@ func (handler *AccountHandler) modify(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.AccountService.Modify(ctx, id, name, permission)
+	result, err := service.Account.Modify(ctx, id, name, permission)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -68,7 +69,7 @@ func (handler *AccountHandler) modify(ctx *gin.Context) {
 }
 
 // change 改密系统用户。
-func (handler *AccountHandler) change(ctx *gin.Context) {
+func (handler *accountHandler) change(ctx *gin.Context) {
 	// 获取输入参数。
 	id := handler.getString(ctx, "id")
 	password := handler.getString(ctx, "password")
@@ -78,7 +79,7 @@ func (handler *AccountHandler) change(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.AccountService.Change(ctx, id, password)
+	result, err := service.Account.Change(ctx, id, password)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -88,7 +89,7 @@ func (handler *AccountHandler) change(ctx *gin.Context) {
 }
 
 // delete 删除系统用户。
-func (handler *AccountHandler) delete(ctx *gin.Context) {
+func (handler *accountHandler) delete(ctx *gin.Context) {
 	// 获取输入参数。
 	id := handler.getString(ctx, "id")
 	// 验证输入参数。
@@ -97,7 +98,7 @@ func (handler *AccountHandler) delete(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.AccountService.Delete(ctx, id)
+	result, err := service.Account.Delete(ctx, id)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -107,7 +108,7 @@ func (handler *AccountHandler) delete(ctx *gin.Context) {
 }
 
 // verify 验证系统用户。
-func (handler *AccountHandler) verify(ctx *gin.Context) {
+func (handler *accountHandler) verify(ctx *gin.Context) {
 	// 获取输入参数。
 	login := handler.getString(ctx, "login")
 	password := handler.getString(ctx, "password")
@@ -117,7 +118,7 @@ func (handler *AccountHandler) verify(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := service.AccountService.Verify(ctx, login, password)
+	result, err := service.Account.Verify(ctx, login, password)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -127,9 +128,9 @@ func (handler *AccountHandler) verify(ctx *gin.Context) {
 }
 
 // filter 查询系统用户。
-func (handler *AccountHandler) filter(ctx *gin.Context) {
+func (handler *accountHandler) filter(ctx *gin.Context) {
 	// 调用服务方法。
-	result, err := service.AccountService.Filter(ctx)
+	result, err := service.Account.Filter(ctx)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
