@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"path/filepath"
+	"service/internal/common"
 	"service/internal/server"
 	"service/internal/storage"
 	"strings"
@@ -16,11 +17,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-// allows 允许文件类型。
-var allows = map[string]struct{}{
-	"txt": {},
-}
 
 // originService 原始文件服务。
 type originService struct {
@@ -39,7 +35,7 @@ func (service *originService) Upload(ctx *gin.Context, file multipart.File, head
 	kind = strings.ToLower(strings.TrimPrefix(kind, "."))
 	size := header.Size
 	// 校验文件扩展名。
-	if _, exist := allows[kind]; exist == false {
+	if common.ExistsFileType(kind) == false {
 		return nil, errors.New("文件类型错误。")
 	}
 	// 获取文件内容。
