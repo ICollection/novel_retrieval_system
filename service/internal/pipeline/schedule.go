@@ -32,7 +32,7 @@ func assign() {
 		return
 	}
 	for _, mission := range missions {
-		if request(*mission.mission) == true {
+		if request(*mission.Mission) == true {
 			go handle(&mission)
 		}
 	}
@@ -40,14 +40,14 @@ func assign() {
 
 // mission 任务信息。
 type mission struct {
-	mission *string `db:"mission"`
-	novel   *string `db:"novel"`
-	origin  *string `db:"origin"`
-	status  *string `db:"status"`
-	kind    *string `db:"type"`
-	total   *int32  `db:"total_count"`
-	embed   *int32  `db:"embed_count"`
-	retry   *int32  `db:"retry_count"`
+	Mission *string `db:"mission"`
+	Novel   *string `db:"novel"`
+	Origin  *string `db:"origin"`
+	Status  *string `db:"status"`
+	Type    *string `db:"type"`
+	Total   *int32  `db:"total_count"`
+	Embed   *int32  `db:"embed_count"`
+	Retry   *int32  `db:"retry_count"`
 }
 
 var (
@@ -80,5 +80,5 @@ func release(mission string) {
 
 // handle 处理单个任务。
 func handle(mission *mission) {
-	defer release(*mission.mission)
+	defer release(*mission.Mission)
 }
