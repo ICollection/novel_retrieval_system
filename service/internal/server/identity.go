@@ -42,7 +42,7 @@ func (claims *Claims) HasPermission(permission string) bool {
 // IssueToken 签发登录令牌。
 func IssueToken(id *string, name *string, login *string, permission *string) (*string, error) {
 	// 组装令牌载荷。
-	moment := time.Now()
+	moment := time.Now().UTC()
 	expire := moment.Add(time.Duration(config.Config.Station.Expire) * time.Hour)
 	claims := Claims{
 		Name:       name,

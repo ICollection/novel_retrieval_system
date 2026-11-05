@@ -110,8 +110,8 @@ const filtered = computed(() => {
   return novels.value.filter((item) => (item.title ?? '').includes(text))
 })
 
-/** 任务视图：直接使用任务列表，排除已完成的任务。 */
-const tasks = computed(() => missions.value.filter((item) => item.status !== '06'))
+/** 任务视图：显示全部任务。 */
+const tasks = computed(() => missions.value)
 
 /** 是否有正在处理的任务，决定是否轮询。 */
 const hasRunning = computed(() => missions.value.some((item) => runningStatus.includes(item.status ?? '')))
@@ -124,13 +124,14 @@ function formatSize(bytes: number) {
 /** 时间格式化为 yyyy-MM-dd HH:mm:ss。 */
 function formatTime(value?: string) {
   if (!value) return '—'
-  const moment = new Date(value)
-  if (Number.isNaN(moment.getTime())) return value
-  const pad = (input: number) => String(input).padStart(2, '0')
-  return (
-    `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}` +
-    ` ${pad(moment.getHours())}:${pad(moment.getMinutes())}:${pad(moment.getSeconds())}`
-  )
+  // 后端存的是不带时区的本地时间，序列化时会带上 Z 或时区后缀，
+  // 若交给 Date 解析会被当成 UTC 再转成本地时间，导致时间偏移，这里直接按字面值格式化。
+  const matched = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(value)
+  if (matched) {
+    const [, year, month, day, hour, minute, second] = matched
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+  }
+  return value
 }
 
 function meta(status?: string) {
@@ -260,19 +261,6 @@ async function cancel(mission: MissionItem) {
     return
   }
   void act('/mission/cancel', mission, `已取消：${mission.novel_name ?? mission.id}`)
-}
-
-async function retry(mission: MissionItem) {
-  try {
-    await ElMessageBox.confirm(
-      `重试会从当前阶段继续，已完成的解析与切片不会重做。确定重试《${mission.novel_name ?? mission.id}》吗？`,
-      '重试任务',
-      { type: 'warning', confirmButtonText: '确定重试', cancelButtonText: '返回' }
-    )
-  } catch {
-    return
-  }
-  void act('/mission/launch', mission, `已提交重试：${mission.novel_name ?? mission.id}`)
 }
 
 /** 修改小说名称的对话框。 */
@@ -482,7 +470,7 @@ onBeforeUnmount(() => {
         <el-table-column label="操作" width="92" align="right">
           <template #default="{ row }">
             <el-button
-              v-if="['01', '08'].includes(row.status)"
+              v-if="['01', '07', '08'].includes(row.status)"
               link
               type="primary"
               :disabled="!canHandle"
@@ -498,15 +486,6 @@ onBeforeUnmount(() => {
               @click="cancel(row)"
             >
               取消
-            </el-button>
-            <el-button
-              v-if="row.status === '07'"
-              link
-              type="primary"
-              :disabled="!canHandle"
-              @click="retry(row)"
-            >
-              重试
             </el-button>
           </template>
         </el-table-column>

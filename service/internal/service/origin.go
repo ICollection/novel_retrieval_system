@@ -26,7 +26,7 @@ type originService struct {
 func (service *originService) Upload(ctx *gin.Context, file multipart.File, header *multipart.FileHeader) (*string, error) {
 	claims := ctx.MustGet("claims").(*server.Claims)
 	// 获取文件信息。
-	moment := time.Now()
+	moment := time.Now().UTC()
 	origin_id := strings.ToUpper(uuid.NewV4().String())
 	novel_id := strings.ToUpper(uuid.NewV4().String())
 	mission_id := strings.ToUpper(uuid.NewV4().String())

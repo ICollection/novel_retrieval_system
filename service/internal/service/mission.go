@@ -35,7 +35,7 @@ func (service *missionService) Launch(ctx *gin.Context, id *string) (*string, er
 		return nil, errors.New("任务状态错误。")
 	}
 	// 更新任务状态。
-	err = storage.RDB.QueryNaught(ctx, "update mission set status=$1 where id=$2;", common.MissionStatus02, id)
+	err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,launch_time=$2 where id=$3;", common.MissionStatus02, time.Now().UTC(), id)
 	if err != nil {
 		return nil, fmt.Errorf("启动分析任务失败，详细错误信息：%w", err)
 	}

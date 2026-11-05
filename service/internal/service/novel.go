@@ -22,7 +22,7 @@ func (service *novelService) Filter(ctx *gin.Context) ([]novel, error) {
 
 // Modify 修改小说对象。
 func (service *novelService) Modify(ctx *gin.Context, id *string, title *string) (*string, error) {
-	err := storage.RDB.QueryNaught(ctx, "update novel set title=$1,update_time=$2 where id=$3;", title, time.Now(), id)
+	err := storage.RDB.QueryNaught(ctx, "update novel set title=$1,update_time=$2 where id=$3;", title, time.Now().UTC(), id)
 	if err != nil {
 		return nil, err
 	}
