@@ -14,31 +14,31 @@ import (
 )
 
 // normalize 归一化文档。
-func normalize(id string, kind string) error {
+func normalize(origin string, kind string) error {
 	switch kind {
 	case common.FileTypeTXT:
-		return normalizeTxt(id)
+		return normalizeTxt(origin)
 	case common.FileTypeMD:
-		return normalizeMd(id)
+		return normalizeMd(origin)
 	}
 	return errors.New("不支持的文件类型。")
 }
 
 // normalizeTxt 归一化 txt 格式文档。
-func normalizeTxt(id string) error {
-	return convertFile(id, common.FileTypeTXT)
+func normalizeTxt(origin string) error {
+	return convertFile(origin, common.FileTypeTXT)
 }
 
 // normalizeMd 归一化 md 格式文档。
-func normalizeMd(id string) error {
-	return convertFile(id, common.FileTypeMD)
+func normalizeMd(origin string) error {
+	return convertFile(origin, common.FileTypeMD)
 }
 
 // convertFile 读取原始文件，解码清洗后保存为 Markdown 文档。
-func convertFile(id string, kind string) error {
+func convertFile(origin string, kind string) error {
 	ctx := context.Background()
 	// 读取原始文件。
-	data, err := storage.OSS.Select(ctx, "Origin", id+"."+kind)
+	data, err := storage.OSS.Select(ctx, "Origin", origin+"."+kind)
 	if err != nil {
 		return fmt.Errorf("读取原始文件失败，详细错误信息：%w", err)
 	}
@@ -48,7 +48,7 @@ func convertFile(id string, kind string) error {
 		return err
 	}
 	// 保存归一化结果。
-	if err := storage.OSS.Upload(ctx, "Normal", id+".md", text, "text/markdown; charset=utf-8"); err != nil {
+	if err := storage.OSS.Upload(ctx, "Normal", origin+".md", text, "text/markdown; charset=utf-8"); err != nil {
 		return fmt.Errorf("保存归一化文档失败，详细错误信息：%w", err)
 	}
 	return nil

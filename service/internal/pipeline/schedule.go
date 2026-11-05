@@ -134,6 +134,28 @@ func handle(ctx context.Context, mission *mission) {
 		log.Println("执行归一操作成功，归一文件：", *mission.Origin+".md")
 		status = common.MissionStatus04
 	}
+	// 执行分章切片。
+	if status == common.MissionStatus04 {
+		// 验证取消状态。
+		if ctx.Err() != nil {
+			return
+		}
+		// 执行分章切片。
+		err := organize(*mission.Origin, *mission.Novel)
+		if err != nil {
+			log.Println("执行分章切片失败，详细错误信息：", err.Error())
+			return
+		}
+		// 更新任务状态。
+		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus05, time.Now().UTC(), mission.Mission)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 记录成功日志。
+		log.Println("执行分章切片成功，归一文件：", *mission.Origin+".md")
+		status = common.MissionStatus05
+	}
 	//TODO 执行一些方法。
 	if ctx.Err() != nil {
 		return
