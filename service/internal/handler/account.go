@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"service/internal/config"
 	"service/internal/server"
 	"service/internal/service"
@@ -11,21 +10,12 @@ import (
 
 // AccountHandler 系统用户处理器。
 type AccountHandler struct {
-	accountService *service.AccountService
 	handler
-}
-
-// createAccountHandler 创建系统用户处理器。
-func createAccountHandler() (*AccountHandler, error) {
-	if service.Account == nil {
-		return nil, errors.New("无法创建系统用户服务。")
-	}
-	return &AccountHandler{accountService: service.Account}, nil
 }
 
 // register 注册路由分组。
 func (handler *AccountHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Web.ContextPath + "/account")
+	group := engine.Group(config.Config.Station.ContextPath + "/account")
 	group.POST("/append", server.TestPermit(server.ManageUser), handler.append)
 	group.PATCH("/modify", server.TestPermit(server.ManageUser), handler.modify)
 	group.PATCH("/change", server.TestPermit(server.ManageUser), handler.change)
@@ -47,7 +37,7 @@ func (handler *AccountHandler) append(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.accountService.Append(ctx, name, login, password, permission)
+	result, err := service.AccountService.Append(ctx, name, login, password, permission)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -68,7 +58,7 @@ func (handler *AccountHandler) modify(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.accountService.Modify(ctx, id, name, permission)
+	result, err := service.AccountService.Modify(ctx, id, name, permission)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -88,7 +78,7 @@ func (handler *AccountHandler) change(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.accountService.Change(ctx, id, password)
+	result, err := service.AccountService.Change(ctx, id, password)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -107,7 +97,7 @@ func (handler *AccountHandler) delete(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.accountService.Delete(ctx, id)
+	result, err := service.AccountService.Delete(ctx, id)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -127,7 +117,7 @@ func (handler *AccountHandler) verify(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.accountService.Verify(ctx, login, password)
+	result, err := service.AccountService.Verify(ctx, login, password)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
@@ -139,7 +129,7 @@ func (handler *AccountHandler) verify(ctx *gin.Context) {
 // filter 查询系统用户。
 func (handler *AccountHandler) filter(ctx *gin.Context) {
 	// 调用服务方法。
-	result, err := handler.accountService.Filter(ctx)
+	result, err := service.AccountService.Filter(ctx)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return

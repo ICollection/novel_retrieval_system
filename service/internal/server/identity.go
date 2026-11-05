@@ -43,7 +43,7 @@ func (claims *Claims) HasPermission(permission string) bool {
 func IssueToken(id *string, name *string, login *string, permission *string) (*string, error) {
 	// 组装令牌载荷。
 	moment := time.Now()
-	expire := moment.Add(time.Duration(config.Config.Token.Expire) * time.Hour)
+	expire := moment.Add(time.Duration(config.Config.Station.Expire) * time.Hour)
 	claims := Claims{
 		Name:       name,
 		Login:      login,
@@ -57,7 +57,7 @@ func IssueToken(id *string, name *string, login *string, permission *string) (*s
 		ID:         strings.ToUpper(uuid.NewV4().String()),
 	}
 	// 签发登录令牌。
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(config.Config.Token.Secret))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(config.Config.Station.Secret))
 	if err != nil {
 		return nil, fmt.Errorf("签发登录令牌失败，详细错误信息：%w", err)
 	}
@@ -68,7 +68,7 @@ func IssueToken(id *string, name *string, login *string, permission *string) (*s
 // ParseToken 验证登录令牌。
 func ParseToken(buffer string) (*Claims, error) {
 	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(buffer, claims, func(*jwt.Token) (any, error) { return []byte(config.Config.Token.Secret), nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
+	token, err := jwt.ParseWithClaims(buffer, claims, func(*jwt.Token) (any, error) { return []byte(config.Config.Station.Secret), nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, fmt.Errorf("验证登录令牌失败，详细错误信息：%w", err)
 	}

@@ -1,13 +1,13 @@
 package service
 
 // Account 系统用户服务。
-var Account *AccountService = nil
+var AccountService *accountService = nil
 
 // Origin 原始文件服务。
-var Origin *OriginService = nil
+var OriginService *originService = nil
 
-// init 初始化服务层。
-func init() {
-	Account, _ = createAccountService()
-	Origin, _ = createOriginService()
+// Initalize 初始化服务层。
+func Initalize() {
+	AccountService = &accountService{}
+	OriginService = &originService{}
 }

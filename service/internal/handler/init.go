@@ -10,10 +10,10 @@ var account *AccountHandler = nil
 // origin 原始文件处理器。
 var origin *OriginHandler = nil
 
-// init 初始化处理器层。
-func init() {
-	account, _ = createAccountHandler()
-	origin, _ = createOriginHandler()
+// Initalize 初始化处理器层。
+func Initalize() {
+	account = &AccountHandler{}
+	origin = &OriginHandler{}
 }
 
 // Register 注册处理器路由。

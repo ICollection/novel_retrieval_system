@@ -8,31 +8,40 @@ import (
 
 // config 应用配置。
 type config struct {
-	Web       web       `mapstructure:"web"`
-	Token     token     `mapstructure:"token"`
-	Embedding embedding `mapstructure:"embedding"`
-	Postgre   postgre   `mapstructure:"postgre"`
-	Qdrant    qdrant    `mapstructure:"qdrant"`
-	MinIO     minio     `mapstructure:"minio"`
+	Station station `mapstructure:"station"`
+	Models  models  `mapstructure:"models"`
+	Postgre postgre `mapstructure:"postgre"`
+	Qdrant  qdrant  `mapstructure:"qdrant"`
+	MinIO   minio   `mapstructure:"minio"`
 }
 
-// token 登录令牌配置。
-type token struct {
-	Secret string `mapstructure:"secret"`
-	Expire int    `mapstructure:"expire"`
-}
-
-// web 服务配置。
-type web struct {
+// station 站点与登录令牌配置。
+type station struct {
 	Port        int    `mapstructure:"port"`
 	ContextPath string `mapstructure:"context_path"`
 	Mode        string `mapstructure:"mode"`
+	Secret      string `mapstructure:"secret"`
+	Expire      int    `mapstructure:"expire"`
 }
 
-// embedding 向量化服务配置。
-type embedding struct {
-	BaseURL string `mapstructure:"base_url"`
-	Model   string `mapstructure:"model"`
+// models 模型服务配置。
+type models struct {
+	Embedding embeddingModel `mapstructure:"embedding"`
+	Language  languageModel  `mapstructure:"language"`
+}
+
+// embeddingModel 向量模型配置。
+type embeddingModel struct {
+	Address string `mapstructure:"address"`
+	Name    string `mapstructure:"name"`
+	Key     string `mapstructure:"key"`
+}
+
+// languageModel 语言模型配置。
+type languageModel struct {
+	Address string `mapstructure:"address"`
+	Name    string `mapstructure:"name"`
+	Key     string `mapstructure:"key"`
 }
 
 // postgre 数据库连接配置。

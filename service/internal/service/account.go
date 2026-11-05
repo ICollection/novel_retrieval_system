@@ -11,22 +11,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AccountService 系统用户服务。
-type AccountService struct {
-	postgre *storage.Postgre
-}
-
-// createAccountService 创建系统用户服务。
-func createAccountService() (*AccountService, error) {
-	postgre, err := storage.CreatePostgre()
-	if err != nil {
-		return nil, err
-	}
-	return &AccountService{postgre: postgre}, nil
+// accountService 系统用户服务。
+type accountService struct {
 }
 
 // Append 添加系统用户。
-func (service *AccountService) Append(ctx *gin.Context, name *string, login *string, password *string, permission *string) (*string, error) {
+func (service *accountService) Append(ctx *gin.Context, name *string, login *string, password *string, permission *string) (*string, error) {
 	id := strings.ToUpper(uuid.NewV4().String())
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
@@ -34,7 +24,7 @@ func (service *AccountService) Append(ctx *gin.Context, name *string, login *str
 		return nil, err
 	}
 	// 插入系统用户。
-	err = service.postgre.QueryNaught(ctx, `insert into account(id,name,login,password,permission) values($1,$2,$3,$4,$5)`, id, name, login, string(hash), permission)
+	err = storage.RDB.QueryNaught(ctx, `insert into account(id,name,login,password,permission) values($1,$2,$3,$4,$5)`, id, name, login, string(hash), permission)
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +33,9 @@ func (service *AccountService) Append(ctx *gin.Context, name *string, login *str
 }
 
 // Modify 修改系统用户。
-func (service *AccountService) Modify(ctx *gin.Context, id *string, name *string, permission *string) (*string, error) {
+func (service *accountService) Modify(ctx *gin.Context, id *string, name *string, permission *string) (*string, error) {
 	// 修改系统用户。
-	err := service.postgre.QueryNaught(ctx, `update account set name=$2,permission=$3 where id=$1;`, id, name, permission)
+	err := storage.RDB.QueryNaught(ctx, `update account set name=$2,permission=$3 where id=$1;`, id, name, permission)
 	if err != nil {
 		return nil, err
 	}
@@ -54,14 +44,14 @@ func (service *AccountService) Modify(ctx *gin.Context, id *string, name *string
 }
 
 // Change 改密系统用户。
-func (service *AccountService) Change(ctx *gin.Context, id *string, password *string) (*string, error) {
+func (service *accountService) Change(ctx *gin.Context, id *string, password *string) (*string, error) {
 	// 计算密码哈希。
 	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 	// 改密系统用户。
-	err = service.postgre.QueryNaught(ctx, `update account set password=$2 where id=$1;`, id, string(hash))
+	err = storage.RDB.QueryNaught(ctx, `update account set password=$2 where id=$1;`, id, string(hash))
 	if err != nil {
 		return nil, err
 	}
@@ -70,9 +60,9 @@ func (service *AccountService) Change(ctx *gin.Context, id *string, password *st
 }
 
 // Delete 删除系统用户。
-func (service *AccountService) Delete(ctx *gin.Context, id *string) (*string, error) {
+func (service *accountService) Delete(ctx *gin.Context, id *string) (*string, error) {
 	// 删除系统用户。
-	err := service.postgre.QueryNaught(ctx, `delete from account where id=$1;`, id)
+	err := storage.RDB.QueryNaught(ctx, `delete from account where id=$1;`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +71,9 @@ func (service *AccountService) Delete(ctx *gin.Context, id *string) (*string, er
 }
 
 // Verify 验证系统用户。
-func (service *AccountService) Verify(ctx *gin.Context, login *string, password *string) (*string, error) {
+func (service *accountService) Verify(ctx *gin.Context, login *string, password *string) (*string, error) {
 	// 查询系统用户。
-	account, err := service.postgre.QuerySingle[account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
+	account, err := storage.RDB.QuerySingle[account](ctx, `select id,name,login,password,permission from account where login=$1;`, login)
 	if err != nil {
 		return nil, errors.New("用户不存在或密码错误。")
 	}
@@ -101,8 +91,8 @@ func (service *AccountService) Verify(ctx *gin.Context, login *string, password 
 }
 
 // Filter 查询系统用户。
-func (service *AccountService) Filter(ctx *gin.Context) ([]account, error) {
-	result, err := service.postgre.QueryMatrix[account](ctx, `select id,name,login,permission from account order by id;`)
+func (service *accountService) Filter(ctx *gin.Context) ([]account, error) {
+	result, err := storage.RDB.QueryMatrix[account](ctx, `select id,name,login,permission from account order by id;`)
 	if err != nil {
 		return nil, err
 	}

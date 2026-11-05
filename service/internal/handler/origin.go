@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"service/internal/config"
 	"service/internal/server"
 	"service/internal/service"
@@ -11,21 +10,12 @@ import (
 
 // OriginHandler 原始文件处理器。
 type OriginHandler struct {
-	originService *service.OriginService
 	handler
-}
-
-// createOriginHandler 创建原始文件处理器。
-func createOriginHandler() (*OriginHandler, error) {
-	if service.Account == nil {
-		return nil, errors.New("无法创建系统用户服务。")
-	}
-	return &OriginHandler{originService: service.Origin}, nil
 }
 
 // register 注册路由分组。
 func (handler *OriginHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Web.ContextPath + "/origin")
+	group := engine.Group(config.Config.Station.ContextPath + "/origin")
 	group.POST("/upload", server.TestPermit(server.UploadNovel), handler.upload)
 }
 
@@ -38,7 +28,7 @@ func (handler *OriginHandler) upload(ctx *gin.Context) {
 		return
 	}
 	// 调用服务方法。
-	result, err := handler.originService.Upload(ctx, file, header)
+	result, err := service.OriginService.Upload(ctx, file, header)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return

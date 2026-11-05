@@ -1,25 +1,34 @@
-# Web 服务
-web:
+# 站点服务（含登录令牌）
+station:
   # 监听端口
   port: 8048
   # 上下文目录（接口路径前缀）
   context_path: /service
   # 运行模式：debug、release、test
   mode: release
-
-# 登录令牌（JWT）
-token:
-  # 签名密钥（随机生成，泄漏后需重新生成）
+  # 登录令牌签名密钥（随机生成，泄漏后需重新生成）
   secret: bbc91851ffc98ee7478557eac744ef49f6c8c28d5693e49f114d949cf013060e67214e5d93c31dd55b9b343a40a7dfdd
-  # 有效期（小时）
+  # 登录令牌有效期（小时）
   expire: 24
 
-# 向量化服务（OpenAI 兼容接口）
-embedding:
-  # 接口地址，包含版本路径
-  base_url: http://192.168.1.100:5050/v1
-  # 模型名称
-  model: Qwen3-Embedding-0.6B-f16
+# 模型服务（OpenAI 兼容接口）
+models:
+  # 向量模型
+  embedding:
+    # 接口地址，包含版本路径
+    address: http://192.168.1.100:5050/v1
+    # 模型名称
+    name: Qwen3-Embedding-0.6B-f16
+    # 接口密钥，为空表示不需要认证
+    key: ""
+  # 语言模型
+  language:
+    # 接口地址，包含版本路径
+    address: http://192.168.1.100:5050/v1
+    # 模型名称（使用前请填写）
+    name: "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ2_M"
+    # 接口密钥，为空表示不需要认证
+    key: ""
 
 # PostgreSQL 数据库
 postgre:

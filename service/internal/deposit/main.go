@@ -21,7 +21,11 @@ func Embedding(name string) {
 
 func loadFile(name string) error {
 	// 创建数据连接。
-	client1 := openai.NewClient(option.WithBaseURL(config.Config.Embedding.BaseURL))
+	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Embedding.Address)}
+	if config.Config.Models.Embedding.Key != "" {
+		options = append(options, option.WithAPIKey(config.Config.Models.Embedding.Key))
+	}
+	client1 := openai.NewClient(options...)
 	client2, err := qdrant.NewClient(&qdrant.Config{
 		Host:   config.Config.Qdrant.Host,
 		Port:   config.Config.Qdrant.Port,
@@ -62,7 +66,7 @@ func handle(client1 *openai.Client, client2 *qdrant.Client, ctx context.Context,
 
 func getEmbedding(client *openai.Client, ctx context.Context, text string) []float64 {
 	response, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-		Model: config.Config.Embedding.Model,
+		Model: config.Config.Models.Embedding.Name,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(text),
 		},
