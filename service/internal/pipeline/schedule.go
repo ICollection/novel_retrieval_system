@@ -141,13 +141,13 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 执行分章切片。
-		err := organize(*mission.Origin, *mission.Novel)
+		total, err := organize(*mission.Origin, *mission.Novel)
 		if err != nil {
 			log.Println("执行分章切片失败，详细错误信息：", err.Error())
 			return
 		}
 		// 更新任务状态。
-		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus05, time.Now().UTC(), mission.Mission)
+		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,total_count=$2,update_time=$3 where id=$4", common.MissionStatus05, total, time.Now().UTC(), mission.Mission)
 		if err != nil {
 			log.Println("更新任务状态失败，详细错误信息：", err.Error())
 			return
