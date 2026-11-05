@@ -5,6 +5,7 @@ import (
 	"log"
 	"service/internal/config"
 	"service/internal/handler"
+	"service/internal/pipeline"
 	"service/internal/server"
 	"service/internal/service"
 	"service/internal/storage"
@@ -20,6 +21,9 @@ func main() {
 	service.Initalize()
 	// 初始化处理层。
 	handler.Initalize()
+	// 启动任务调度。
+	pipeline.Initalize()
+	defer pipeline.Dispose()
 	// 设置运行模式。
 	switch config.Config.Station.Mode {
 	case gin.ReleaseMode:

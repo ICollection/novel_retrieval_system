@@ -121,17 +121,20 @@ function formatSize(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-/** 时间格式化为 yyyy-MM-dd HH:mm:ss。 */
+/** 时间格式化为 yyyy-MM-dd HH:mm:ss，按浏览器本地时区显示。 */
 function formatTime(value?: string) {
   if (!value) return '—'
-  // 后端存的是不带时区的本地时间，序列化时会带上 Z 或时区后缀，
-  // 若交给 Date 解析会被当成 UTC 再转成本地时间，导致时间偏移，这里直接按字面值格式化。
-  const matched = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(value)
-  if (matched) {
-    const [, year, month, day, hour, minute, second] = matched
-    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
-  }
-  return value
+  // 后端统一返回 UTC 时间，可能省略时区后缀，这里补上 Z 再交给 Date 解析，
+  // 由浏览器自动换算成本地时区。
+  const normalized = value.trim().replace(' ', 'T')
+  const withZone = /(Z|[+-]\d{2}:?\d{2})$/.test(normalized) ? normalized : `${normalized}Z`
+  const moment = new Date(withZone)
+  if (Number.isNaN(moment.getTime())) return value
+  const pad = (input: number) => String(input).padStart(2, '0')
+  return (
+    `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}` +
+    ` ${pad(moment.getHours())}:${pad(moment.getMinutes())}:${pad(moment.getSeconds())}`
+  )
 }
 
 function meta(status?: string) {
