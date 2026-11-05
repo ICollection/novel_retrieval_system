@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"service/internal/config"
+	"time"
 
 	openais "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -36,6 +37,8 @@ func createOpenaiVMD() (*openai, error) {
 
 // GetEmbedding 获取文本向量。
 func (openai *openai) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Models.Embedding.Timeout))
+	defer cancel()
 	// 获取文本向量。
 	response, err := openai.client.Embeddings.New(ctx, openais.EmbeddingNewParams{
 		Model: config.Config.Models.Embedding.Name,

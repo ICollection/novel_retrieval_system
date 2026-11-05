@@ -8,6 +8,7 @@ import (
 	"net"
 	"service/internal/config"
 	"strconv"
+	"time"
 
 	minios "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -30,6 +31,8 @@ func createMinio() (*minio, error) {
 
 // Upload 上传对象。
 func (minio *minio) Upload(ctx context.Context, path string, file string, data []byte, contentType string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.MinIO.Timeout))
+	defer cancel()
 	_, err := minio.client.PutObject(ctx, config.Config.MinIO.Bucket, path+"/"+file, bytes.NewReader(data), int64(len(data)), minios.PutObjectOptions{ContentType: contentType})
 	if err != nil {
 		return fmt.Errorf("上传对象失败，详细错误信息：%w", err)
@@ -39,6 +42,8 @@ func (minio *minio) Upload(ctx context.Context, path string, file string, data [
 
 // Select 获取对象。
 func (minio *minio) Select(ctx context.Context, path string, file string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.MinIO.Timeout))
+	defer cancel()
 	// 获取对象数据。
 	object, err := minio.client.GetObject(ctx, config.Config.MinIO.Bucket, path+"/"+file, minios.GetObjectOptions{})
 	if err != nil {
@@ -56,6 +61,8 @@ func (minio *minio) Select(ctx context.Context, path string, file string) ([]byt
 
 // Delete 删除对象。
 func (minio *minio) Delete(ctx context.Context, object string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.MinIO.Timeout))
+	defer cancel()
 	if err := minio.client.RemoveObject(ctx, config.Config.MinIO.Bucket, object, minios.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("删除对象失败，详细错误信息：%w", err)
 	}

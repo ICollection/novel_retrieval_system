@@ -8,11 +8,11 @@ import (
 
 // config 应用配置。
 type config struct {
-	Station station `mapstructure:"station"`
-	Models  models  `mapstructure:"models"`
-	Postgre postgre `mapstructure:"postgre"`
-	Qdrant  qdrant  `mapstructure:"qdrant"`
-	MinIO   minio   `mapstructure:"minio"`
+	Station  station  `mapstructure:"station"`
+	Models   models   `mapstructure:"models"`
+	Postgres postgres `mapstructure:"postgres"`
+	Qdrant   qdrant   `mapstructure:"qdrant"`
+	MinIO    minio    `mapstructure:"minio"`
 }
 
 // station 站点与登录令牌配置。
@@ -36,6 +36,7 @@ type embeddingModel struct {
 	Address string `mapstructure:"address"`
 	Name    string `mapstructure:"name"`
 	Key     string `mapstructure:"key"`
+	Timeout int    `mapstructure:"timeout"`
 }
 
 // languageModel 语言模型配置。
@@ -43,21 +44,23 @@ type languageModel struct {
 	Address string `mapstructure:"address"`
 	Name    string `mapstructure:"name"`
 	Key     string `mapstructure:"key"`
+	Timeout int    `mapstructure:"timeout"`
 }
 
-// postgre 数据库连接配置。
-type postgre struct {
+// postgres 数据库连接配置。
+type postgres struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	Database string `mapstructure:"database"`
 	SSLMode  string `mapstructure:"sslmode"`
+	Timeout  int    `mapstructure:"timeout"`
 }
 
 // GetDSN 获取连接字符串。
-func (postgre *postgre) GetDSN() string {
-	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgre.Username, postgre.Password), Host: net.JoinHostPort(postgre.Host, strconv.Itoa(postgre.Port)), Path: "/" + postgre.Database, RawQuery: "sslmode=" + postgre.SSLMode}
+func (postgres *postgres) GetDSN() string {
+	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgres.Username, postgres.Password), Host: net.JoinHostPort(postgres.Host, strconv.Itoa(postgres.Port)), Path: "/" + postgres.Database, RawQuery: "sslmode=" + postgres.SSLMode}
 	return url.String()
 }
 
@@ -67,6 +70,7 @@ type qdrant struct {
 	Port       int    `mapstructure:"port"`
 	APIKey     string `mapstructure:"api_key"`
 	Collection string `mapstructure:"collection"`
+	Timeout    int    `mapstructure:"timeout"`
 }
 
 // minio 对象存储配置。
@@ -78,4 +82,5 @@ type minio struct {
 	Bucket    string `mapstructure:"bucket"`
 	UseSSL    bool   `mapstructure:"use_ssl"`
 	Region    string `mapstructure:"region"`
+	Timeout   int    `mapstructure:"timeout"`
 }

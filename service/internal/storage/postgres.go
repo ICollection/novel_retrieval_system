@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"service/internal/config"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,7 +17,7 @@ type postgres struct {
 
 // createPostgres 创建 PostgreSQL 数据库连接。
 func createPostgres() (*postgres, error) {
-	pool, err := pgxpool.New(context.Background(), config.Config.Postgre.GetDSN())
+	pool, err := pgxpool.New(context.Background(), config.Config.Postgres.GetDSN())
 	if err != nil {
 		return nil, fmt.Errorf("创建 PostgreSQL 数据库连接失败，详细错误信息：%w", err)
 	}
@@ -25,6 +26,8 @@ func createPostgres() (*postgres, error) {
 
 // QueryNaught 执行查询不返回值。
 func (postgres *postgres) QueryNaught(ctx context.Context, sql string, arguments ...any) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	_, err := postgres.pool.Exec(ctx, sql, arguments...)
 	if err != nil {
 		return err
@@ -34,6 +37,8 @@ func (postgres *postgres) QueryNaught(ctx context.Context, sql string, arguments
 
 // QueryMatrix 执行查询返回切片。
 func (postgres *postgres) QueryMatrix[T any](ctx context.Context, sql string, arguments ...any) ([]T, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	rows, err := postgres.pool.Query(ctx, sql, arguments...)
 	if err != nil {
 		return nil, err
@@ -47,6 +52,8 @@ func (postgres *postgres) QueryMatrix[T any](ctx context.Context, sql string, ar
 
 // QuerySingle 执行查询返回记录。
 func (postgres *postgres) QuerySingle[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	rows, err := postgres.pool.Query(ctx, sql, arguments...)
 	if err != nil {
 		return nil, err
@@ -60,6 +67,8 @@ func (postgres *postgres) QuerySingle[T any](ctx context.Context, sql string, ar
 
 // QuerySimple 执行查询返回单值。
 func (postgres *postgres) QuerySimple[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	var result T
 	err := postgres.pool.QueryRow(ctx, sql, arguments...).Scan(&result)
 	if err != nil {
@@ -70,21 +79,29 @@ func (postgres *postgres) QuerySimple[T any](ctx context.Context, sql string, ar
 
 // BeginTransaction 开始事务。
 func (postgres *postgres) BeginTransaction(ctx context.Context) (pgx.Tx, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	return postgres.pool.BeginTx(ctx, pgx.TxOptions{})
 }
 
 // CommitTransaction 提交事务。
 func (postgres *postgres) CommitTransaction(ctx context.Context, tx pgx.Tx) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	return tx.Commit(ctx)
 }
 
 // RollbackTransaction 回滚事务。
 func (postgres *postgres) RollbackTransaction(ctx context.Context, tx pgx.Tx) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	return tx.Rollback(ctx)
 }
 
 // BatchNaught 执行查询不返回值。
 func (postgres *postgres) BatchNaught(ctx context.Context, tx pgx.Tx, sql string, arguments ...any) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
+	defer cancel()
 	_, err := tx.Exec(ctx, sql, arguments...)
 	if err != nil {
 		return err

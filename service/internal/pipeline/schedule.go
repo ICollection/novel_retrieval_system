@@ -17,32 +17,27 @@ func schedule(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			mutex.Lock()
-			defer mutex.Unlock()
-			for _, cancel := range index {
-				cancel()
-			}
 			return
 		case <-ticker.C:
-			assign()
+			assign(ctx)
 			break
 		}
 	}
 }
 
 // assign 查询可用任务。
-func assign() {
-	missions, err := storage.RDB.QueryMatrix[mission](context.Background(), "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ($1,$2,$3,$4) order by mission.status desc,mission.launch_time;", common.MissionStatus02, common.MissionStatus03, common.MissionStatus04, common.MissionStatus05)
+func assign(ctx context.Context) {
+	missions, err := storage.RDB.QueryMatrix[mission](ctx, "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ($1,$2,$3,$4) order by mission.status desc,mission.launch_time;", common.MissionStatus02, common.MissionStatus03, common.MissionStatus04, common.MissionStatus05)
 	if err != nil {
 		log.Println("查询可用任务失败，详细错误信息：", err)
 		return
 	}
 	for _, mission := range missions {
-		if ctx := request(*mission.Mission); ctx != nil {
-			wait.Go(func() { handle(ctx, &mission) })
+		if task := request(ctx, *mission.Mission); task != nil {
+			wait.Go(func() { handle(task, &mission) })
 		}
 	}
-	missions, err = storage.RDB.QueryMatrix[mission](context.Background(), "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status=$1 order by mission.status desc,mission.launch_time;", common.MissionStatus08)
+	missions, err = storage.RDB.QueryMatrix[mission](ctx, "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status=$1 order by mission.status desc,mission.launch_time;", common.MissionStatus08)
 	if err != nil {
 		log.Println("查询取消任务失败，详细错误信息：", err)
 		return
@@ -76,7 +71,7 @@ var (
 )
 
 // request 申请启动任务。
-func request(mission string) context.Context {
+func request(parent context.Context, mission string) context.Context {
 	mutex.Lock()
 	defer mutex.Unlock()
 	if len(index) >= config.Config.Station.Concurrency {
@@ -85,7 +80,7 @@ func request(mission string) context.Context {
 	if _, exists := index[mission]; exists == true {
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parent)
 	index[mission] = cancel
 	return ctx
 }

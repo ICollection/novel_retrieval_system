@@ -23,6 +23,8 @@ models:
     name: Qwen3-Embedding-0.6B-f16
     # 接口密钥，为空表示不需要认证
     key: ""
+    # 请求超时时间（秒）
+    timeout: 60
   # 语言模型
   language:
     # 接口地址，包含版本路径
@@ -31,9 +33,11 @@ models:
     name: "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ2_M"
     # 接口密钥，为空表示不需要认证
     key: ""
+    # 请求超时时间（秒）
+    timeout: 120
 
 # PostgreSQL 数据库
-postgre:
+postgres:
   # 服务地址
   host: 192.168.1.100
   # 服务端口
@@ -46,6 +50,8 @@ postgre:
   database: novel
   # SSL 模式：disable / require
   sslmode: disable
+  # 操作超时时间（秒）
+  timeout: 30
 
 # Qdrant 向量数据库
 qdrant:
@@ -57,6 +63,8 @@ qdrant:
   api_key:
   # 集合名称
   collection: novel
+  # 操作超时时间（秒）
+  timeout: 30
 
 # MinIO 对象存储
 minio:
@@ -74,3 +82,5 @@ minio:
   use_ssl: false
   # 区域，MinIO 默认为 us-east-1
   region: us-east-1
+  # 操作超时时间（秒）
+  timeout: 60
