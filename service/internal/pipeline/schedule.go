@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"log"
+	"service/internal/common"
 	"service/internal/config"
 	"service/internal/storage"
 	"sync"
@@ -16,6 +17,8 @@ func schedule(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			mutex.Lock()
+			defer mutex.Unlock()
 			for _, cancel := range index {
 				cancel()
 			}
@@ -29,23 +32,25 @@ func schedule(ctx context.Context) {
 
 // assign 查询可用任务。
 func assign() {
-	missions, err := storage.RDB.QueryMatrix[mission](context.Background(), "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ('02','03','04','05') order by mission.status desc,mission.launch_time;")
+	missions, err := storage.RDB.QueryMatrix[mission](context.Background(), "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ($1,$2,$3,$4) order by mission.status desc,mission.launch_time;", common.MissionStatus02, common.MissionStatus03, common.MissionStatus04, common.MissionStatus05)
 	if err != nil {
 		log.Println("查询可用任务失败，详细错误信息：", err)
 		return
 	}
 	for _, mission := range missions {
 		if ctx := request(*mission.Mission); ctx != nil {
-			go handle(ctx, &mission)
+			wait.Go(func() { handle(ctx, &mission) })
 		}
 	}
-	ids, err := storage.RDB.QueryMatrix[string](context.Background(), "select id from mission where status='08';")
+	missions, err = storage.RDB.QueryMatrix[mission](context.Background(), "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status=$1 order by mission.status desc,mission.launch_time;", common.MissionStatus08)
 	if err != nil {
 		log.Println("查询取消任务失败，详细错误信息：", err)
 		return
 	}
-	for _, id := range ids {
-		if cancel, exists := index[id]; exists {
+	mutex.Lock()
+	defer mutex.Unlock()
+	for _, mission := range missions {
+		if cancel, exists := index[*mission.Mission]; exists {
 			cancel()
 		}
 	}
@@ -95,4 +100,24 @@ func release(mission string) {
 // handle 处理单个任务。
 func handle(ctx context.Context, mission *mission) {
 	defer release(*mission.Mission)
+	if ctx.Err() != nil {
+		return
+	}
+	//TODO 执行一些方法。
+	if ctx.Err() != nil {
+		return
+	}
+	//TODO 执行一些方法。
+	if ctx.Err() != nil {
+		return
+	}
+	//TODO 执行一些方法。
+	if ctx.Err() != nil {
+		return
+	}
+	//TODO 执行一些方法。
+	if ctx.Err() != nil {
+		return
+	}
+	//TODO 执行一些方法。
 }
