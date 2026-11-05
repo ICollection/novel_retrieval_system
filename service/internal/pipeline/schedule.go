@@ -16,6 +16,9 @@ func schedule(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			for _, cancel := range index {
+				cancel()
+			}
 			return
 		case <-ticker.C:
 			assign()
@@ -32,8 +35,18 @@ func assign() {
 		return
 	}
 	for _, mission := range missions {
-		if request(*mission.Mission) == true {
-			go handle(&mission)
+		if ctx := request(*mission.Mission); ctx != nil {
+			go handle(ctx, &mission)
+		}
+	}
+	ids, err := storage.RDB.QueryMatrix[string](context.Background(), "select id from mission where status='08';")
+	if err != nil {
+		log.Println("查询取消任务失败，详细错误信息：", err)
+		return
+	}
+	for _, id := range ids {
+		if cancel, exists := index[id]; exists {
+			cancel()
 		}
 	}
 }
@@ -54,21 +67,22 @@ var (
 	// mutex 分配用排他锁。
 	mutex sync.Mutex
 	// index 活动任务索引。
-	index = make(map[string]struct{})
+	index = make(map[string]context.CancelFunc)
 )
 
 // request 申请启动任务。
-func request(mission string) bool {
+func request(mission string) context.Context {
 	mutex.Lock()
 	defer mutex.Unlock()
 	if len(index) >= config.Config.Station.Concurrency {
-		return false
+		return nil
 	}
 	if _, exists := index[mission]; exists == true {
-		return false
+		return nil
 	}
-	index[mission] = struct{}{}
-	return true
+	ctx, cancel := context.WithCancel(context.Background())
+	index[mission] = cancel
+	return ctx
 }
 
 // release 记录释放任务。
@@ -79,6 +93,6 @@ func release(mission string) {
 }
 
 // handle 处理单个任务。
-func handle(mission *mission) {
+func handle(ctx context.Context, mission *mission) {
 	defer release(*mission.Mission)
 }
