@@ -45,7 +45,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const response = await fetch(url, { method: options.method ?? 'GET', headers, body: options.body })
   if (!response.ok) {
-    throw new ApiError(`请求失败（HTTP ${response.status}）`, response.status)
+    throw new ApiError('请求失败，请稍后重试。', response.status)
   }
   const result = (await response.json()) as Result<T>
   if (!result.success) {

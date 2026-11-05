@@ -3,38 +3,62 @@
  * 文档处理页面。
  *
  * 页面分三块：上传文件、任务列表（控制启动/取消/重试）、小说列表（内容信息）。
- * 任务与小说的数据都来自 GET /novel/list，前端按状态过滤。
+ * 小说来自 POST /novel/filter，任务来自 POST /mission/filter，前端按 novel 合并后展示。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { request } from '../api'
-import { getSession, hasPermission } from '../auth'
+import { getSession, hasPermission, Permission } from '../auth'
 
-/** 后端返回的小说与任务信息。 */
-interface DocItem {
+/** 后端返回的小说信息。 */
+interface NovelItem {
   /** 小说标识 */
   id: string
+  /** 原始文件标识 */
+  origin?: string
   /** 书名 */
   title?: string
   /** 字符数 */
   character_count?: number
   /** 章节数 */
   chapter_count?: number
+  /** 任务状态，06 表示已就绪 */
+  status?: string
+  /** 创建人编码 */
+  create_code?: string
+  /** 创建人名称 */
+  create_name?: string
   /** 创建时间 */
   create_time?: string
-  /** 进度最后更新时间 */
+  /** 更新时间 */
   update_time?: string
+}
+
+/** 后端返回的分析任务信息。 */
+interface MissionItem {
+  /** 任务标识 */
+  id: string
+  /** 所属小说标识 */
+  novel_code?: string
+  /** 所属小说名称 */
+  novel_name?: string
   /** 任务状态，01 待启动、02 已启动、03 解析中、04 切分中、05 向量中、06 已完成、07 已失败、08 已取消 */
   status?: string
   /** 分片总数 */
   total_count?: number
   /** 已向量化数量 */
   embed_count?: number
-  /** 失败原因 */
-  message?: string
+  /** 启动时间 */
+  launch_time?: string
+  /** 结束时间 */
+  finish_time?: string
+  /** 更新时间 */
+  update_time?: string
   /** 重试次数 */
   retry_count?: number
+  /** 失败原因 */
+  message?: string
 }
 
 type TagType = 'success' | 'info' | 'warning' | 'danger' | undefined
@@ -68,70 +92,77 @@ const files = ref<LocalFile[]>([])
 const raws = new Map<number, File>()
 let seq = 0
 
-const items = ref<DocItem[]>([])
+const novels = ref<NovelItem[]>([])
+const missions = ref<MissionItem[]>([])
 const loading = ref(false)
-const listError = ref('')
 const keyword = ref('')
 const tab = ref<'task' | 'novel'>('task')
 
 const session = getSession()
-const canUpload = hasPermission(session?.permission, 'UploadNovel')
-const canHandle = hasPermission(session?.permission, 'HandleNovel')
+const canUpload = hasPermission(session?.permission, Permission.ManageOrigin)
+const canHandle = hasPermission(session?.permission, Permission.ManageMission)
+const canModify = hasPermission(session?.permission, Permission.ManageOrigin)
 
 /** 当前筛选后的小说。 */
 const filtered = computed(() => {
   const text = keyword.value.trim()
-  if (!text) return items.value
-  return items.value.filter((item) => (item.title ?? '').includes(text))
+  if (!text) return novels.value
+  return novels.value.filter((item) => (item.title ?? '').includes(text))
 })
 
-/** 任务视图：排除已完成的小说。 */
-const tasks = computed(() => filtered.value.filter((item) => item.status !== '06'))
+/** 任务视图：直接使用任务列表，排除已完成的任务。 */
+const tasks = computed(() => missions.value.filter((item) => item.status !== '06'))
 
 /** 是否有正在处理的任务，决定是否轮询。 */
-const hasRunning = computed(() => items.value.some((item) => runningStatus.includes(item.status ?? '')))
+const hasRunning = computed(() => missions.value.some((item) => runningStatus.includes(item.status ?? '')))
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+/** 时间格式化为 yyyy-MM-dd HH:mm:ss。 */
 function formatTime(value?: string) {
   if (!value) return '—'
   const moment = new Date(value)
   if (Number.isNaN(moment.getTime())) return value
-  return moment.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  const pad = (input: number) => String(input).padStart(2, '0')
+  return (
+    `${moment.getFullYear()}-${pad(moment.getMonth() + 1)}-${pad(moment.getDate())}` +
+    ` ${pad(moment.getHours())}:${pad(moment.getMinutes())}:${pad(moment.getSeconds())}`
+  )
 }
 
 function meta(status?: string) {
   return statusMeta[status ?? ''] ?? { label: '未知', type: undefined }
 }
 
-/** 向量化进度百分比。 */
-function percent(item: DocItem) {
+/** 入库进度百分比，保留两位小数。 */
+function percent(item: MissionItem) {
   if (!item.total_count || item.total_count <= 0) return 0
-  return Math.min(100, Math.round(((item.embed_count ?? 0) / item.total_count) * 100))
+  return Math.min(100, Number((((item.embed_count ?? 0) / item.total_count) * 100).toFixed(2)))
+}
+
+/** 进度文本，保留两位小数。 */
+function formatPercent(value: number) {
+  return `${value.toFixed(2)}%`
 }
 
 /** 拉取小说与任务列表。 */
 async function refresh(silent = false) {
   if (!session) {
-    listError.value = '登录已失效，请重新登录。'
     return
   }
   if (!silent) loading.value = true
   try {
-    const content = await request<DocItem[]>('/novel/list', { token: session.token })
-    items.value = Array.isArray(content) ? content : []
-    listError.value = ''
+    const [novelContent, missionContent] = await Promise.all([
+      request<NovelItem[]>('/novel/filter', { method: 'POST', token: session.token }),
+      request<MissionItem[]>('/mission/filter', { method: 'POST', token: session.token })
+    ])
+    novels.value = Array.isArray(novelContent) ? novelContent : []
+    missions.value = Array.isArray(missionContent) ? missionContent : []
   } catch (error) {
-    listError.value = error instanceof Error ? error.message : '加载失败'
-    if (!silent) ElMessage.error(listError.value)
+    if (!silent) ElMessage.error(error instanceof Error ? error.message : '加载失败')
   } finally {
     loading.value = false
     ensurePolling()
@@ -198,14 +229,14 @@ function removeUpload(file: LocalFile) {
   files.value = files.value.filter((item) => item.key !== file.key)
 }
 
-/** 修改任务状态。 */
-async function act(path: string, item: DocItem, message: string) {
+/** 修改任务状态，后端以任务标识 id 作为参数。 */
+async function act(path: string, mission: MissionItem, message: string) {
   if (!session) return
   try {
     await request<unknown>(path, {
       method: 'POST',
       token: session.token,
-      query: { novel: item.id }
+      query: { id: mission.id }
     })
     ElMessage.success(message)
     await refresh(true)
@@ -214,34 +245,72 @@ async function act(path: string, item: DocItem, message: string) {
   }
 }
 
-function launch(item: DocItem) {
-  void act('/mission/launch', item, `已启动：${item.title ?? item.id}`)
+function launch(mission: MissionItem) {
+  void act('/mission/launch', mission, `已启动：${mission.novel_name ?? mission.id}`)
 }
 
-async function cancel(item: DocItem) {
+async function cancel(mission: MissionItem) {
   try {
     await ElMessageBox.confirm(
-      `取消后当前处理会停止，已完成的解析与切片会保留，下次启动可继续。确定取消《${item.title ?? item.id}》吗？`,
+      `取消后当前处理会停止，已完成的解析与切片会保留，下次启动可继续。确定取消《${mission.novel_name ?? mission.id}》吗？`,
       '取消任务',
       { type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' }
     )
   } catch {
     return
   }
-  void act('/mission/cancel', item, `已取消：${item.title ?? item.id}`)
+  void act('/mission/cancel', mission, `已取消：${mission.novel_name ?? mission.id}`)
 }
 
-async function retry(item: DocItem) {
+async function retry(mission: MissionItem) {
   try {
     await ElMessageBox.confirm(
-      `重试会从当前阶段继续，已完成的解析与切片不会重做。确定重试《${item.title ?? item.id}》吗？`,
+      `重试会从当前阶段继续，已完成的解析与切片不会重做。确定重试《${mission.novel_name ?? mission.id}》吗？`,
       '重试任务',
       { type: 'warning', confirmButtonText: '确定重试', cancelButtonText: '返回' }
     )
   } catch {
     return
   }
-  void act('/mission/retry', item, `已提交重试：${item.title ?? item.id}`)
+  void act('/mission/launch', mission, `已提交重试：${mission.novel_name ?? mission.id}`)
+}
+
+/** 修改小说名称的对话框。 */
+const editVisible = ref(false)
+const editing = ref<NovelItem | null>(null)
+const editTitle = ref('')
+const saving = ref(false)
+
+/** 打开修改名称对话框。 */
+function openEdit(novel: NovelItem) {
+  editing.value = novel
+  editTitle.value = novel.title ?? ''
+  editVisible.value = true
+}
+
+/** 保存小说名称。 */
+async function saveTitle() {
+  if (!session || !editing.value) return
+  const title = editTitle.value.trim()
+  if (!title) {
+    ElMessage.warning('请输入小说名称。')
+    return
+  }
+  saving.value = true
+  try {
+    await request<string>('/novel/modify', {
+      method: 'POST',
+      token: session.token,
+      query: { id: editing.value.id, title }
+    })
+    ElMessage.success('修改成功')
+    editVisible.value = false
+    await refresh(true)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '修改失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 /** 轮询：只在进行中任务存在时启动，页面隐藏时暂停。 */
@@ -320,8 +389,6 @@ onBeforeUnmount(() => {
         </div>
       </el-upload>
 
-      <p v-if="!canUpload" class="permission-hint">当前账号没有上传小说权限，上传功能已禁用。</p>
-
       <div v-if="files.length" class="upload-list">
         <div v-for="file in files" :key="file.key" class="upload-item">
           <span class="upload-name">{{ file.name }}</span>
@@ -334,11 +401,6 @@ onBeforeUnmount(() => {
           <el-button link type="danger" @click="removeUpload(file)">移除</el-button>
         </div>
       </div>
-
-      <p class="flow-hint">
-        <span>处理流程</span>
-        文件存入 Origin 目录 → 归一化到 Normal 目录 → 生成章节与分片 → 写入向量库
-      </p>
     </section>
 
     <section class="card">
@@ -348,58 +410,76 @@ onBeforeUnmount(() => {
           <el-tab-pane :label="`小说（${filtered.length}）`" name="novel" />
         </el-tabs>
         <div class="list-tools">
-          <el-input v-model="keyword" placeholder="搜索书名" clearable size="small" class="search" />
+          <el-input
+            v-if="tab === 'novel'"
+            v-model="keyword"
+            placeholder="搜索书名"
+            clearable
+            size="small"
+            class="search"
+          />
           <el-button size="small" :loading="loading" @click="refresh()">刷新</el-button>
         </div>
       </div>
 
-      <p v-if="listError" class="list-error">{{ listError }}</p>
-
-      <!-- 任务视图 -->
+      <!-- 任务视图：数据来自任务查询接口 -->
       <el-table v-if="tab === 'task'" v-loading="loading" :data="tasks" row-key="id" class="doc-table">
-        <el-table-column label="书名" min-width="220">
+        <el-table-column label="小说名称" min-width="120">
           <template #default="{ row }">
-            <span class="doc-title">{{ row.title || '未命名' }}</span>
-            <span class="doc-sub">
-              章节 {{ row.chapter_count ?? 0 }} · 字数 {{ row.character_count ?? 0 }}
-            </span>
+            <span class="doc-title">{{ row.novel_name || row.novel_code || '—' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="130">
+        <el-table-column label="任务状态" width="86">
           <template #default="{ row }">
-            <el-tooltip v-if="row.status === '07' && row.message" :content="row.message" placement="top">
-              <el-tag :type="meta(row.status).type" effect="light" size="small" round>
-                {{ meta(row.status).label }}
-              </el-tag>
+            <el-tooltip v-if="row.status === '07'" placement="top">
+              <span class="doc-sub">{{ meta(row.status).label }}</span>
+              <template #content>
+                <div>重试次数：{{ row.retry_count ?? 0 }}</div>
+                <div>异常消息：{{ row.message || '无' }}</div>
+              </template>
             </el-tooltip>
-            <el-tag v-else :type="meta(row.status).type" effect="light" size="small" round>
-              {{ meta(row.status).label }}
-            </el-tag>
+            <span v-else class="doc-sub">{{ meta(row.status).label }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="进度" min-width="180">
+        <el-table-column label="分片总数" width="82" align="right">
           <template #default="{ row }">
-            <el-progress
-              v-if="row.status === '05' && row.total_count > 0"
-              :percentage="percent(row)"
-              :stroke-width="8"
-            />
-            <span v-else-if="runningStatus.includes(row.status)" class="doc-sub">
-              分片计算中…
-            </span>
-            <span v-else class="doc-sub">—</span>
+            <span class="doc-sub">{{ row.total_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="更新时间" width="130">
+        <el-table-column label="入库数量" width="82" align="right">
           <template #default="{ row }">
-            <span class="doc-sub">{{ formatTime(row.update_time ?? row.create_time) }}</span>
+            <span class="doc-sub">{{ row.embed_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="150" align="right">
+        <el-table-column label="入库进度" width="112" align="right">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ formatPercent(percent(row)) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="启动时间" width="145">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ row.launch_time ? formatTime(row.launch_time) : '' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="完成时间" width="145">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ row.finish_time ? formatTime(row.finish_time) : '' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="更新时间" width="145">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="92" align="right">
           <template #default="{ row }">
             <el-button
               v-if="['01', '08'].includes(row.status)"
@@ -432,47 +512,77 @@ onBeforeUnmount(() => {
         </el-table-column>
       </el-table>
 
-      <!-- 小说视图 -->
+      <!-- 小说视图：数据来自小说查询接口 -->
       <el-table v-else v-loading="loading" :data="filtered" row-key="id" class="doc-table">
-        <el-table-column label="书名" min-width="260">
+        <el-table-column label="小说名称" min-width="150">
           <template #default="{ row }">
             <span class="doc-title">{{ row.title || '未命名' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="字数" width="120">
+        <el-table-column label="小说状态" width="80">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ row.status === '06' ? '就绪' : '等待' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="总字数" width="80" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.character_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="章节数" width="110">
+        <el-table-column label="章节数" width="80" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.chapter_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="130">
+        <el-table-column label="创建人" width="100">
           <template #default="{ row }">
-            <el-tag :type="meta(row.status).type" effect="light" size="small" round>
-              {{ meta(row.status).label }}
-            </el-tag>
+            <span class="doc-sub">{{ row.create_name ?? '' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="创建时间" width="150">
+        <el-table-column label="创建时间" width="145">
           <template #default="{ row }">
             <span class="doc-sub">{{ formatTime(row.create_time) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="更新时间" width="145">
+          <template #default="{ row }">
+            <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="90" align="right">
+          <template #default="{ row }">
+            <el-button link type="primary" :disabled="!canModify" @click="openEdit(row)">修改</el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <el-empty
-        v-if="!loading && !listError && (tab === 'task' ? tasks.length === 0 : filtered.length === 0)"
+        v-if="!loading && (tab === 'task' ? tasks.length === 0 : filtered.length === 0)"
         :description="tab === 'task' ? '暂无待处理任务' : '还没有小说，先上传一个文件吧'"
         :image-size="90"
       />
     </section>
+
+    <el-dialog v-model="editVisible" title="修改小说名称" width="400px" :close-on-click-modal="false">
+      <el-input
+        v-model="editTitle"
+        maxlength="200"
+        show-word-limit
+        placeholder="请输入小说名称"
+        @keyup.enter="saveTitle"
+      />
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveTitle">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -591,12 +701,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.permission-hint {
-  margin: 12px 0 0;
-  color: #b45309;
-  font-size: 12.5px;
-}
-
 /* 本地上传条目 */
 .upload-list {
   display: flex;
@@ -630,23 +734,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.flow-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 14px 0 0;
-  color: var(--text-sub);
-  font-size: 12px;
-}
-
-.flow-hint span {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-size: 11.5px;
-}
-
 /* 列表头部 */
 .list-head {
   display: flex;
@@ -674,12 +761,6 @@ onBeforeUnmount(() => {
 
 .search {
   width: 180px;
-}
-
-.list-error {
-  margin: 6px 0 10px;
-  color: #dc2626;
-  font-size: 12.5px;
 }
 
 /* 表格 */
@@ -710,6 +791,7 @@ onBeforeUnmount(() => {
   margin-top: 3px;
   color: var(--text-faint);
   font-size: 11.5px;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px) {

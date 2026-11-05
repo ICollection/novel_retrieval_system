@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { getSession, hasPermission } from '../auth'
+import { getSession, hasPermission, Permission, permissionOptions } from '../auth'
 import { request } from '../api'
 
 interface Account {
@@ -12,17 +12,10 @@ interface Account {
   permission?: string
 }
 
-/** 与后端 server/identity.go 中的权限常量保持一致。 */
-const permissions = [
-  { value: 'ManageUser', label: '管理用户' },
-  { value: 'UploadNovel', label: '上传小说' },
-  { value: 'HandleNovel', label: '处理小说' }
-]
-
 const session = getSession()
 const token = session?.token ?? ''
 /** 没有管理用户权限时，增删改按钮全部禁用。 */
-const canManage = hasPermission(session?.permission, 'ManageUser')
+const canManage = hasPermission(session?.permission, Permission.ManageUser)
 const accounts = ref<Account[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -59,14 +52,23 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败'
 }
 
-/** 把逗号分隔的权限串拆成数组。 */
+/** 枚举中存在的权限值。 */
+const permissionValues = permissionOptions.map((item) => item.value)
+
+/** 把逗号分隔的权限串拆成数组，只保留枚举中存在的权限。 */
 function splitPermission(permission?: string): string[] {
-  return permission ? permission.split(',').filter(Boolean) : []
+  if (!permission) {
+    return []
+  }
+  return permission
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => permissionValues.includes(item))
 }
 
 /** 把权限编码转成中文名称。 */
 function labelOf(value: string): string {
-  return permissions.find((item) => item.value === value)?.label ?? value
+  return permissionOptions.find((item) => item.value === value)?.label ?? value
 }
 
 /** 查询用户列表。 */
@@ -280,7 +282,7 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="权限">
           <el-checkbox-group v-model="addForm.permissions">
-            <el-checkbox v-for="item in permissions" :key="item.value" :value="item.value">
+            <el-checkbox v-for="item in permissionOptions" :key="item.value" :value="item.value">
               {{ item.label }}
             </el-checkbox>
           </el-checkbox-group>
@@ -305,7 +307,7 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="权限">
           <el-checkbox-group v-model="editForm.permissions">
-            <el-checkbox v-for="item in permissions" :key="item.value" :value="item.value">
+            <el-checkbox v-for="item in permissionOptions" :key="item.value" :value="item.value">
               {{ item.label }}
             </el-checkbox>
           </el-checkbox-group>
