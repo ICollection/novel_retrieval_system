@@ -14,29 +14,28 @@ import (
 )
 
 // normalize 归一化文档。
-func normalize(origin string, kind string) error {
+func normalize(ctx context.Context, origin string, kind string) error {
 	switch kind {
 	case common.FileTypeTXT:
-		return normalizeTxt(origin)
+		return normalizeTxt(ctx, origin)
 	case common.FileTypeMD:
-		return normalizeMd(origin)
+		return normalizeMd(ctx, origin)
 	}
 	return errors.New("不支持的文件类型。")
 }
 
 // normalizeTxt 归一化 txt 格式文档。
-func normalizeTxt(origin string) error {
-	return convertFile(origin, common.FileTypeTXT)
+func normalizeTxt(ctx context.Context, origin string) error {
+	return convertFile(ctx, origin, common.FileTypeTXT)
 }
 
 // normalizeMd 归一化 md 格式文档。
-func normalizeMd(origin string) error {
-	return convertFile(origin, common.FileTypeMD)
+func normalizeMd(ctx context.Context, origin string) error {
+	return convertFile(ctx, origin, common.FileTypeMD)
 }
 
 // convertFile 读取原始文件，解码清洗后保存为 Markdown 文档。
-func convertFile(origin string, kind string) error {
-	ctx := context.Background()
+func convertFile(ctx context.Context, origin string, kind string) error {
 	// 读取原始文件。
 	data, err := storage.OSS.Select(ctx, "Origin", origin+"."+kind)
 	if err != nil {

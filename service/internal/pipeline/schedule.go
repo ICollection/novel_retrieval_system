@@ -119,7 +119,7 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 执行归一操作。
-		err := normalize(*mission.Origin, *mission.Type)
+		err := normalize(ctx, *mission.Origin, *mission.Type)
 		if err != nil {
 			log.Println("执行归一操作失败，详细错误信息：", err.Error())
 			return
@@ -141,36 +141,60 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 执行分章切片。
-		total, err := organize(*mission.Origin, *mission.Novel)
+		total_count, character_count, chapter_count, err := organize(ctx, *mission.Origin, *mission.Novel)
 		if err != nil {
 			log.Println("执行分章切片失败，详细错误信息：", err.Error())
 			return
 		}
 		// 更新任务状态。
-		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,total_count=$2,update_time=$3 where id=$4", common.MissionStatus05, total, time.Now().UTC(), mission.Mission)
+		transaction, err := storage.RDB.BeginTransaction(ctx)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		defer storage.RDB.RollbackTransaction(ctx, transaction)
+		// 更新任务状态。
+		err = storage.RDB.BatchNaught(ctx, transaction, "update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 更新任务状态。
+		err = storage.RDB.BatchNaught(ctx, transaction, "update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 更新任务状态。
+		err = storage.RDB.CommitTransaction(ctx, transaction)
 		if err != nil {
 			log.Println("更新任务状态失败，详细错误信息：", err.Error())
 			return
 		}
 		// 记录成功日志。
-		log.Println("执行分章切片成功，归一文件：", *mission.Origin+".md")
+		log.Println("执行分章切片成功，切片数量：", total_count)
 		status = common.MissionStatus05
 	}
-	//TODO 执行一些方法。
-	if ctx.Err() != nil {
-		return
+	// 执行向量入库。
+	if status == common.MissionStatus05 {
+		// 验证取消状态。
+		if ctx.Err() != nil {
+			return
+		}
+		// 执行向量入库。
+		embed_count, err := vectorize(ctx, *mission.Mission, *mission.Novel)
+		if err != nil {
+			log.Println("执行向量入库失败，详细错误信息：", err.Error())
+			return
+		}
+		// 更新任务状态。
+		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,embed_count=$2,update_time=$3 where id=$4", common.MissionStatus06, embed_count, time.Now().UTC(), mission.Mission)
+		if err != nil {
+			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			return
+		}
+		// 记录成功日志。
+		log.Println("执行向量入库成功，入库数量：", embed_count)
+		status = common.MissionStatus06
 	}
-	//TODO 执行一些方法。
-	if ctx.Err() != nil {
-		return
-	}
-	//TODO 执行一些方法。
-	if ctx.Err() != nil {
-		return
-	}
-	//TODO 执行一些方法。
-	if ctx.Err() != nil {
-		return
-	}
-	//TODO 执行一些方法。
 }
