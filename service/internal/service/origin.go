@@ -53,33 +53,16 @@ func (service *originService) Upload(ctx *gin.Context, file multipart.File, head
 	if *count > 0 {
 		return nil, errors.New("相同文件已经存在。")
 	}
-	// 启动数据事务。
-	transaction, err := storage.RDB.BeginTransaction(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer storage.RDB.RollbackTransaction(ctx, transaction)
-	// 插入原始记录。
-	err = storage.RDB.BatchNaught(ctx, transaction, `insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7)`, origin_id, name, kind, size, hash, claims.Subject, moment)
-	if err != nil {
-		return nil, err
-	}
-	// 插入小说记录。
-	err = storage.RDB.BatchNaught(ctx, transaction, `insert into novel(id,origin,title,character_count,chapter_count,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8)`, novel_id, origin_id, name, 0, 0, claims.Subject, moment, moment)
-	if err != nil {
-		return nil, err
-	}
-	// 插入进度记录。
-	err = storage.RDB.BatchNaught(ctx, transaction, `insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
-	if err != nil {
-		return nil, err
-	}
 	// 上传对象存储。
 	if err := storage.OSS.Upload(ctx, "Origin", origin_id+"."+kind, content, header.Header.Get("Content-Type")); err != nil {
 		return nil, fmt.Errorf("保存文件失败，详细错误信息：%w", err)
 	}
-	// 提交数据事务。
-	err = storage.RDB.CommitTransaction(ctx, transaction)
+	// 事务保存数据。
+	batch := storage.RDB.CreateBatch()
+	batch.AppendCommand("insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7);", origin_id, name, kind, size, hash, claims.Subject, moment)
+	batch.AppendCommand("insert into novel(id,origin,title,character_count,chapter_count,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8)", novel_id, origin_id, name, 0, 0, claims.Subject, moment, moment)
+	batch.AppendCommand("insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
+	err = storage.RDB.BatchNaught(ctx, batch)
 	if err != nil {
 		return nil, err
 	}

@@ -77,39 +77,49 @@ func (postgres *postgres) QuerySimple[T any](ctx context.Context, sql string, ar
 	return &result, nil
 }
 
-// BeginTransaction 开始事务。
-func (postgres *postgres) BeginTransaction(ctx context.Context) (pgx.Tx, error) {
+// BatchNaught 执行事务不返回值。
+func (postgres *postgres) BatchNaught(ctx context.Context, batch *Batch) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
 	defer cancel()
-	return postgres.pool.BeginTx(ctx, pgx.TxOptions{})
-}
-
-// CommitTransaction 提交事务。
-func (postgres *postgres) CommitTransaction(ctx context.Context, tx pgx.Tx) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
-	defer cancel()
-	return tx.Commit(ctx)
-}
-
-// RollbackTransaction 回滚事务。
-func (postgres *postgres) RollbackTransaction(ctx context.Context, tx pgx.Tx) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
-	defer cancel()
-	return tx.Rollback(ctx)
-}
-
-// BatchNaught 执行查询不返回值。
-func (postgres *postgres) BatchNaught(ctx context.Context, tx pgx.Tx, sql string, arguments ...any) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Postgres.Timeout))
-	defer cancel()
-	_, err := tx.Exec(ctx, sql, arguments...)
+	// 打开查询事务。
+	transaction, err := postgres.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
-	return nil
+	defer transaction.Rollback(ctx)
+	// 执行批量查询。
+	for _, command := range batch.commands {
+		_, err := transaction.Exec(ctx, command.sql, command.arguments...)
+		if err != nil {
+			return err
+		}
+	}
+	// 提交查询事务。
+	return transaction.Commit(ctx)
 }
 
 // Close 关闭连接池。
 func (postgres *postgres) dispose() {
 	postgres.pool.Close()
+}
+
+// command 查询命令。
+type command struct {
+	sql       string
+	arguments []any
+}
+
+// Batch 查询批次。
+type Batch struct {
+	commands []command
+}
+
+// AppendCommand 添加批次命令。
+func (batch *Batch) AppendCommand(sql string, arguments ...any) {
+	batch.commands = append(batch.commands, command{sql: sql, arguments: arguments})
+}
+
+// CreateBatch 创建查询批次。
+func (postgres *postgres) CreateBatch() *Batch {
+	return &Batch{commands: []command{}}
 }

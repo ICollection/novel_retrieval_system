@@ -9,6 +9,8 @@ var (
 	Novel *novelService = nil
 	// Mission 分析任务服务。
 	Mission *missionService = nil
+	// Converse 用户对话服务。
+	Converse *converseService = nil
 )
 
 // Initalize 初始化服务层。
@@ -17,4 +19,5 @@ func Initalize() {
 	Origin = &originService{}
 	Novel = &novelService{}
 	Mission = &missionService{}
+	Converse = &converseService{}
 }

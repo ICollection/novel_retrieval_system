@@ -294,28 +294,19 @@ func store(ctx context.Context, novel string, serial int32, item chapter, offset
 	// 计算分片。
 	fragments := section(item.paragraphs)
 	// 启动数据事务。
-	transaction, err := storage.RDB.BeginTransaction(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer storage.RDB.RollbackTransaction(ctx, transaction)
+	batch := storage.RDB.CreateBatch()
 	// 插入章节记录。
 	identifier := strings.ToUpper(uuid.NewV4().String())
-	err = storage.RDB.BatchNaught(ctx, transaction, `insert into chapter(id,novel,serial,title,start,final,character_count) values($1,$2,$3,$4,$5,$6,$7)`, identifier, novel, serial, item.title, item.start, item.final, item.final-item.start)
-	if err != nil {
-		return 0, err
-	}
+	batch.AppendCommand("insert into chapter(id,novel,serial,title,start,final,character_count) values($1,$2,$3,$4,$5,$6,$7);", identifier, novel, serial, item.title, item.start, item.final, item.final-item.start)
 	// 插入分片记录。
 	heading := prefix(serial, item.title)
 	for index, fragment := range fragments {
 		content := heading + fragment.text
-		err = storage.RDB.BatchNaught(ctx, transaction, `insert into segment(id,novel,chapter,serial,content,character_count,start,final,vector) values($1,$2,$3,$4,$5,$6,$7,$8,$9)`, strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, content, int32(utf8.RuneCountInString(content)), fragment.start, fragment.final, false)
-		if err != nil {
-			return 0, err
-		}
+		batch.AppendCommand("insert into segment(id,novel,chapter,serial,content,character_count,start,final,vector) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, content, int32(utf8.RuneCountInString(content)), fragment.start, fragment.final, false)
 	}
 	// 提交数据事务。
-	if err := storage.RDB.CommitTransaction(ctx, transaction); err != nil {
+	err := storage.RDB.BatchNaught(ctx, batch)
+	if err != nil {
 		return 0, err
 	}
 	return int32(len(fragments)), nil

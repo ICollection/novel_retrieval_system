@@ -147,26 +147,10 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 更新任务状态。
-		transaction, err := storage.RDB.BeginTransaction(ctx)
-		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
-			return
-		}
-		defer storage.RDB.RollbackTransaction(ctx, transaction)
-		// 更新任务状态。
-		err = storage.RDB.BatchNaught(ctx, transaction, "update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
-		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
-			return
-		}
-		// 更新任务状态。
-		err = storage.RDB.BatchNaught(ctx, transaction, "update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
-		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
-			return
-		}
-		// 更新任务状态。
-		err = storage.RDB.CommitTransaction(ctx, transaction)
+		batch := storage.RDB.CreateBatch()
+		batch.AppendCommand("update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
+		batch.AppendCommand("update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
+		err = storage.RDB.BatchNaught(ctx, batch)
 		if err != nil {
 			log.Println("更新任务状态失败，详细错误信息：", err.Error())
 			return
