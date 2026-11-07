@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"log"
 	"service/internal/common"
 	"service/internal/config"
+	"service/internal/response"
 	"service/internal/server"
 	"service/internal/service"
 
@@ -44,16 +44,12 @@ func (handler *converseHandler) appendMessage(ctx *gin.Context) {
 		server.Failure(ctx, server.Failure400, "请求参数错误。")
 		return
 	}
+	writer := server.CreateAnswerWriter(ctx)
 	// 保存用户消息。
-	sessionId, messageId, _, err := service.Converse.AppendHumanMessage(ctx, session, content, novels)
+	sessionId, err := response.ComposeAnswer(ctx, session, content, novels, writer.Process)
 	if err != nil {
-		server.Failure(ctx, server.Failure501, err.Error())
-		return
+		writer.Failure(err.Error())
 	}
-	log.Printf("会话编码：%s，消息编码：%s", sessionId, messageId)
-	// 生成系统消息。
-	answer := "aaaaa"
-	// 保存系统消息。
 	// 返回成功结果。
-	server.Success(ctx, answer)
+	writer.Success(*sessionId)
 }

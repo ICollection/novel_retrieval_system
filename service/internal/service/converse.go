@@ -89,6 +89,50 @@ func (service *converseService) AppendModelMessage(ctx *gin.Context, session *st
 	return session, &message_id, &serial, nil
 }
 
+// FilterRecentMessage 查找近期会话消息。
+func (service *converseService) FilterRecentMessage(ctx *gin.Context, id *string) ([]string, error) {
+	result := []string{}
+	// 获取会话记录。
+	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where session=$1", id)
+	if err != nil {
+		return nil, err
+	}
+	// 加入历史摘要。
+	if session.Contain != nil {
+		result = append(result, "======== 以下为历史摘要 ========")
+		result = append(result, "历史摘要："+*session.Summary)
+	}
+	// 加入历史问题。
+	var messages []message
+	if session.Contain != nil {
+		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from session where session=$1 and serial<$2 and serial>$3 order by serial;", session.Id, session.Current, session.Contain)
+	} else {
+		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from session where session=$1 and serial<$2 order by serial;", session.Id, session.Current)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) > 0 {
+		result = append(result, "======== 以下为历史对话 ========")
+	}
+	for _, message := range messages {
+		if *message.Human {
+			result = append(result, "用户提问："+*message.Content)
+		} else {
+			result = append(result, "助手回答："+*message.Content)
+		}
+	}
+	// 加入当前问题。
+	message, err := storage.RDB.QuerySingle[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from session where session=$1 and serial=$2 order by serial;", session.Id, session.Current)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, "======== 以下为当前问题 ========")
+	result = append(result, "用户提问："+*message.Content)
+	// 返回合成消息。
+	return result, nil
+}
+
 // session 用户会话。
 type session struct {
 	Id         *string    `db:"id"`
@@ -99,4 +143,17 @@ type session struct {
 	CreateUser *string    `db:"create_user"`
 	CreateTime *time.Time `db:"create_time"`
 	UpdateTime *time.Time `db:"update_time"`
+}
+
+// message 会话消息。
+type message struct {
+	Id         *string    `db:"id"`
+	Session    *string    `db:"session"`
+	Serial     *int32     `db:"serial"`
+	Human      *bool      `db:"human"`
+	Content    *string    `db:"content"`
+	Novels     *string    `db:"novels"`
+	Segments   *string    `db:"segments"`
+	Complete   *bool      `db:"complete"`
+	CreateTime *time.Time `db:"create_time"`
 }
