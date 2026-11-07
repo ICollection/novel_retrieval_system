@@ -13,8 +13,8 @@ var (
 	Converse *converseService = nil
 )
 
-// Initalize 初始化服务层。
-func Initalize() {
+// Initialize 初始化服务层。
+func Initialize() {
 	Account = &accountService{}
 	Origin = &originService{}
 	Novel = &novelService{}

@@ -10,8 +10,8 @@ var (
 	wait   sync.WaitGroup
 )
 
-// Initalize 启动任务调度。
-func Initalize() {
+// Initialize 启动任务调度。
+func Initialize() {
 	var ctx context.Context
 	ctx, cancel = context.WithCancel(context.Background())
 	wait.Go(func() { schedule(ctx) })

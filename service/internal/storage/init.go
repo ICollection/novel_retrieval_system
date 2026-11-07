@@ -15,8 +15,8 @@ var (
 	VMD *openai
 )
 
-// Initalize 初始化存储层。
-func Initalize() error {
+// Initialize 初始化存储层。
+func Initialize() error {
 	var err error
 	// 初始化关系数据库连接。
 	if RDB, err = createPostgres(); err != nil {

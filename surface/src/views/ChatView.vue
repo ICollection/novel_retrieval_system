@@ -1,47 +1,87 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+/**
+ * 对话问答页面。
+ *
+ * 会话来自 POST /converse/filterSession，历史消息来自 POST /converse/filterMessage，
+ * 提问通过 POST /converse/appendMessage 以流式响应（text/event-stream）返回。
+ */
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { API_BASE_URL, request } from '../api'
+import { getSession } from '../auth'
 
-interface Source {
-  chapter: string
-  title: string
+/** 会话，字段与后端 service/converse.go 中的 session 结构一致。 */
+interface SessionItem {
+  id: string | null
+  title: string | null
+  summary: string | null
+  contain: string | null
+  current: number | null
+  create_user: string | null
+  create_time: string | null
+  update_time: string | null
 }
 
-interface Message {
+/** 会话消息，字段与后端 service/converse.go 中的 message 结构一致。 */
+interface MessageItem {
+  id: string | null
+  session: string | null
+  serial: number | null
+  human: boolean | null
+  content: string | null
+  novels: string | null
+  segments: string | null
+  complete: boolean | null
+  create_time: string | null
+}
+
+/** 小说，字段与后端 service/novel.go 中的 novel 结构一致。 */
+interface NovelItem {
+  id: string
+  title?: string
+  status?: string
+}
+
+/** 页面消息。 */
+interface ChatMessage {
   id: number
   role: 'user' | 'assistant'
   content: string
+  thinking: string
   time: string
   pending?: boolean
-  sources?: Source[]
+  error?: string
 }
 
-interface MockReply {
-  match: string[]
-  content: string
-  sources: Source[]
+/** 流式事件。 */
+interface StreamEvent {
+  type?: string
+  content?: string
 }
 
-const clock = () =>
-  new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+const token = getSession()?.token ?? ''
 
-let seq = 0
-
-const messages = ref<Message[]>([
-  {
-    id: ++seq,
-    role: 'assistant',
-    content:
-      '你好，我是这部小说的阅读助手。已经入库的内容都可以问：情节走向、人物关系、设定细节，或者某个意象在原文中出现的位置。\n\n回答下方会附上参考章节，方便你回到原文核对。',
-    time: clock()
-  }
-])
+const sessions = ref<SessionItem[]>([])
+const currentSession = ref<string | null>(null)
+const messages = ref<ChatMessage[]>([])
+const novels = ref<NovelItem[]>([])
+const selectedNovels = ref<string[]>([])
 
 const input = ref('')
 const sending = ref(false)
+const loadingSessions = ref(false)
+const loadingMessages = ref(false)
 const scrollEl = ref<HTMLDivElement>()
 
-const timers: number[] = []
-const showGuide = computed(() => messages.value.length === 1)
+let sequence = 0
+let controller: AbortController | null = null
+
+const currentTitle = computed(() => {
+  const target = sessions.value.find((item) => item.id === currentSession.value)
+  return target?.title || '新会话'
+})
+
+const showGuide = computed(() => messages.value.length === 0 && !loadingMessages.value)
 
 const suggestions = [
   '主角是在第几章正式出场的？',
@@ -50,133 +90,241 @@ const suggestions = [
   '小说里有哪些反复出现的意象？'
 ]
 
-const mockReplies: MockReply[] = [
-  {
-    match: ['人物', '关系', '角色', '谁'],
-    content:
-      '从已入库的章节来看，故事主要围绕三条人物线索展开。\n\n一是主角与师门之间的羁绊，前期以“授业—误解—和解”的节奏推进；二是主角与同辈伙伴的关系，他们在中段的情节转折后形成稳定的行动小组；三是反派阵营内部的裂痕，这条线在后期直接推动了终局冲突。\n\n作者很少直接交代关系，更多信息藏在对话和细节里，建议把第 3、17、42 章的相关段落放在一起读。',
-    sources: [
-      { chapter: '第 3 章', title: '旧院的灯' },
-      { chapter: '第 17 章', title: '同行者' },
-      { chapter: '第 42 章', title: '裂缝' }
-    ]
-  },
-  {
-    match: ['出场', '第几章', '第一次', '登场'],
-    content:
-      '主角第一次正式登场是在第 2 章的结尾：雨中有人替他撑伞，但没有给出姓名，只描写了袖口的旧纹样。\n\n到第 4 章，这个纹样在当铺里被再次提起，身份才被间接确认。真正以本名开口说话，要等到第 6 章与师父的对话。\n\n如果只统计“有名字出现”的位置，第一次在第 4 章中段。',
-    sources: [
-      { chapter: '第 2 章', title: '雨里的伞' },
-      { chapter: '第 4 章', title: '当铺' },
-      { chapter: '第 6 章', title: '拜师' }
-    ]
-  },
-  {
-    match: ['结局', '最后', '结尾', '大结局'],
-    content:
-      '结局处理得比较克制，没有正面写胜负，而是落在一次告别上。\n\n终章里，主角回到开篇的旧院，把一直随身携带的物件留在窗台上，然后离开。前文埋下的几处伏笔——旧纹样、那盏灯、以及第 42 章提到的裂缝——都在这一章被简短地回应。\n\n整体基调偏向“完成之后回到起点”，开放式但不算留白过多。',
-    sources: [
-      { chapter: '第 118 章', title: '归院' },
-      { chapter: '第 119 章', title: '窗台' }
-    ]
-  },
-  {
-    match: ['意象', '象征', '反复', '细节'],
-    content:
-      '反复出现的意象主要有三个：灯、雨和裂缝。\n\n“灯”出现频次最高，多与人物状态相关，灯亮表示有人等候，灯灭则意味着关系断裂；“雨”几乎总出现在转折之前，起预告作用；“裂缝”出现次数不多，但每次都与阵营分裂对应。\n\n这三组意象在第 3、17、42、118 章形成了比较完整的呼应链条。',
-    sources: [
-      { chapter: '第 3 章', title: '旧院的灯' },
-      { chapter: '第 42 章', title: '裂缝' },
-      { chapter: '第 118 章', title: '归院' }
-    ]
+/** 当前时刻，用于本地消息。 */
+function clock(): string {
+  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** 格式化后端时间，按浏览器本地时区显示。 */
+function formatTime(value?: string | null): string {
+  if (!value) {
+    return ''
   }
-]
-
-const fallbackReply: MockReply = {
-  match: [],
-  content:
-    '这个问题在已入库的章节里没有完全对应的段落，我按相关情节做了一个梳理。\n\n从上下文推断，作者更倾向于用细节暗示而不是直接说明，因此同一条信息往往分散在几个章节里。建议先确认你关注的是人物动机还是情节事实，我可以再缩小检索范围。\n\n（当前为界面演示，回答由模拟数据生成。）',
-  sources: [
-    { chapter: '第 27 章', title: '夜谈' },
-    { chapter: '第 56 章', title: '回望' }
-  ]
+  let text = value.trim().replace(' ', 'T')
+  if (!/(Z|[+-]\d{2}:\d{2})$/.test(text)) {
+    text += 'Z'
+  }
+  const target = new Date(text)
+  if (Number.isNaN(target.getTime())) {
+    return ''
+  }
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())} ${pad(target.getHours())}:${pad(target.getMinutes())}`
 }
 
-function pickReply(question: string): MockReply {
-  return mockReplies.find((item) => item.match.some((key) => question.includes(key))) ?? fallbackReply
-}
-
-function paragraphs(content: string) {
-  return content.split('\n\n').filter(Boolean)
+/** 按空行拆分段落。 */
+function paragraphs(content: string): string[] {
+  return content.split(/\n{2,}/).filter((item) => item.trim() !== '')
 }
 
 function scrollDown() {
   nextTick(() => {
-    const el = scrollEl.value
-    if (el) el.scrollTop = el.scrollHeight
+    const element = scrollEl.value
+    if (element) {
+      element.scrollTop = element.scrollHeight
+    }
   })
 }
 
-function streamReply(reply: MockReply) {
-  const message: Message = {
-    id: ++seq,
+/** 加载会话列表。 */
+async function loadSessions() {
+  if (!token) {
+    return
+  }
+  loadingSessions.value = true
+  try {
+    const content = await request<SessionItem[]>('/converse/filterSession', {
+      token
+    })
+    sessions.value = Array.isArray(content) ? content : []
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加载会话失败')
+  } finally {
+    loadingSessions.value = false
+  }
+}
+
+/** 加载就绪的小说，作为本轮问答的书单候选。 */
+async function loadNovels() {
+  if (!token) {
+    return
+  }
+  try {
+    const content = await request<NovelItem[]>('/novel/filter', { method: 'POST', token })
+    novels.value = (Array.isArray(content) ? content : []).filter((item) => item.status === '06')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加载小说失败')
+  }
+}
+
+/** 进入历史会话。 */
+async function openSession(id: string) {
+  if (sending.value || currentSession.value === id) {
+    return
+  }
+  currentSession.value = id
+  messages.value = []
+  loadingMessages.value = true
+  try {
+    const content = await request<MessageItem[]>('/converse/filterMessage', {
+      token,
+      query: { session: id }
+    })
+    messages.value = (Array.isArray(content) ? content : []).map((item) => ({
+      id: ++sequence,
+      role: item.human ? 'user' : 'assistant',
+      content: item.content ?? '',
+      thinking: '',
+      time: formatTime(item.create_time) || clock()
+    }))
+    scrollDown()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加载会话消息失败')
+  } finally {
+    loadingMessages.value = false
+  }
+}
+
+/** 新建会话。 */
+function newSession() {
+  if (sending.value) {
+    return
+  }
+  currentSession.value = null
+  messages.value = []
+}
+
+/** 处理一个流式事件。 */
+function applyEvent(raw: string, reply: ChatMessage) {
+  const line = raw.split('\n').find((item) => item.startsWith('data:'))
+  if (!line) {
+    return
+  }
+  let payload: StreamEvent
+  try {
+    payload = JSON.parse(line.slice(5).trim()) as StreamEvent
+  } catch {
+    return
+  }
+  switch (payload.type) {
+    case 'thinking':
+      reply.thinking += payload.content ?? ''
+      scrollDown()
+      break
+    case 'answer':
+      reply.content += payload.content ?? ''
+      scrollDown()
+      break
+    case 'finish':
+      if (payload.content) {
+        currentSession.value = payload.content
+      }
+      void loadSessions()
+      break
+    case 'error':
+      reply.error = payload.content || '回答失败，请稍后重试。'
+      break
+  }
+}
+
+/** 读取流式响应。 */
+async function consume(body: ReadableStream<Uint8Array>, reply: ChatMessage) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, { stream: true })
+    let index = buffer.indexOf('\n\n')
+    while (index >= 0) {
+      applyEvent(buffer.slice(0, index), reply)
+      buffer = buffer.slice(index + 2)
+      index = buffer.indexOf('\n\n')
+    }
+  }
+}
+
+/** 发送提问。 */
+async function send() {
+  const text = input.value.trim()
+  if (!text || sending.value) {
+    return
+  }
+  if (selectedNovels.value.length === 0) {
+    ElMessage.warning('请先选择参考小说。')
+    return
+  }
+
+  messages.value.push({ id: ++sequence, role: 'user', content: text, thinking: '', time: clock() })
+  const reply: ChatMessage = {
+    id: ++sequence,
     role: 'assistant',
     content: '',
+    thinking: '',
     time: clock(),
     pending: true
   }
-  messages.value.push(message)
-  scrollDown()
-
-  const startTimer = window.setTimeout(() => {
-    message.pending = false
-    let cursor = 0
-    const timer = window.setInterval(() => {
-      cursor = Math.min(reply.content.length, cursor + 2)
-      message.content = reply.content.slice(0, cursor)
-      scrollDown()
-      if (cursor >= reply.content.length) {
-        window.clearInterval(timer)
-        message.sources = reply.sources
-        sending.value = false
-        scrollDown()
-      }
-    }, 24)
-    timers.push(timer)
-  }, 620)
-  timers.push(startTimer)
-}
-
-function send() {
-  const text = input.value.trim()
-  if (!text || sending.value) return
-
-  messages.value.push({ id: ++seq, role: 'user', content: text, time: clock() })
+  messages.value.push(reply)
   input.value = ''
   sending.value = true
   scrollDown()
 
-  streamReply(pickReply(text))
+  const form = new FormData()
+  if (currentSession.value) {
+    form.append('session', currentSession.value)
+  }
+  form.append('content', text)
+  form.append('novels', selectedNovels.value.join(','))
+
+  controller = new AbortController()
+  try {
+    const response = await fetch(`${API_BASE_URL}/converse/appendMessage`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal
+    })
+    if (!response.ok || !response.body) {
+      throw new Error('请求失败，请稍后重试。')
+    }
+    await consume(response.body, reply)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return
+    }
+    reply.error = error instanceof Error ? error.message : '请求失败，请稍后重试。'
+    ElMessage.error(reply.error)
+  } finally {
+    reply.pending = false
+    sending.value = false
+    scrollDown()
+  }
 }
 
+/** 使用推荐问题。 */
 function useSuggestion(text: string) {
-  if (sending.value) return
+  if (sending.value) {
+    return
+  }
   input.value = text
-  send()
 }
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
-    send()
+    void send()
   }
 }
 
+onMounted(() => {
+  void Promise.all([loadSessions(), loadNovels()])
+})
+
 onBeforeUnmount(() => {
-  timers.forEach((timer) => {
-    window.clearTimeout(timer)
-    window.clearInterval(timer)
-  })
+  controller?.abort()
 })
 </script>
 
@@ -186,13 +334,30 @@ onBeforeUnmount(() => {
       <div class="page-head">
         <div>
           <h1>对话问答</h1>
-          <p>当前及历史回答按时间顺序展示在上方</p>
+          <p>{{ currentTitle }}</p>
         </div>
-        <span class="conn-badge"><i />界面演示</span>
+        <el-button :disabled="sending" @click="newSession">新建会话</el-button>
+      </div>
+
+      <div class="session-bar" v-loading="loadingSessions">
+        <button
+          v-for="item in sessions"
+          :key="item.id ?? item.title ?? ''"
+          type="button"
+          class="session-chip"
+          :class="{ 'is-active': item.id === currentSession }"
+          :disabled="sending || loadingMessages"
+          @click="item.id && openSession(item.id)"
+        >
+          {{ item.title || '未命名会话' }}
+        </button>
+        <span v-if="!loadingSessions && sessions.length === 0" class="session-empty">
+          还没有历史会话
+        </span>
       </div>
     </header>
 
-    <div ref="scrollEl" class="stream">
+    <div ref="scrollEl" class="stream" v-loading="loadingMessages">
       <div class="stream-inner">
         <div v-if="showGuide" class="guide">
           <p class="guide-title">试试这样问</p>
@@ -209,32 +374,48 @@ onBeforeUnmount(() => {
             <div class="meta">
               {{ message.role === 'user' ? '你' : '阅读助手' }} · {{ message.time }}
             </div>
+            <details v-if="message.thinking" class="thinking">
+              <summary>思考过程</summary>
+              <p>{{ message.thinking }}</p>
+            </details>
             <div class="bubble">
-              <span v-if="message.pending" class="typing">
+              <span v-if="message.pending && !message.content" class="typing">
                 <i /><i /><i />
               </span>
               <template v-else>
                 <p v-for="(para, index) in paragraphs(message.content)" :key="index">{{ para }}</p>
+                <span v-if="message.pending" class="cursor" />
               </template>
             </div>
-            <div v-if="message.sources && message.sources.length" class="sources">
-              <span class="sources-label">参考章节</span>
-              <el-tag
-                v-for="source in message.sources"
-                :key="source.chapter"
-                size="small"
-                effect="plain"
-                round
-              >
-                {{ source.chapter }} · {{ source.title }}
-              </el-tag>
-            </div>
+            <p v-if="message.error" class="error-line">{{ message.error }}</p>
           </div>
         </div>
       </div>
     </div>
 
     <footer class="composer">
+      <div class="composer-tools">
+        <span class="tools-label">参考小说</span>
+        <el-select
+          v-model="selectedNovels"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          size="small"
+          placeholder="请选择小说"
+          :disabled="sending"
+          class="novel-select"
+        >
+          <el-option
+            v-for="item in novels"
+            :key="item.id"
+            :label="item.title || item.id"
+            :value="item.id"
+          />
+        </el-select>
+        <span v-if="novels.length === 0" class="tools-empty">暂无就绪小说</span>
+      </div>
+
       <div class="composer-inner">
         <el-input
           v-model="input"
@@ -247,14 +428,14 @@ onBeforeUnmount(() => {
         <el-button
           type="primary"
           class="send-btn"
-          :disabled="!input.trim() || sending"
+          :disabled="!input.trim() || sending || selectedNovels.length === 0"
           :loading="sending"
           @click="send"
         >
           发送
         </el-button>
       </div>
-      <p class="hint">Enter 发送，Shift + Enter 换行 · 回答由模拟数据生成</p>
+      <p class="hint">Enter 发送，Shift + Enter 换行</p>
     </footer>
   </div>
 </template>
@@ -268,28 +449,61 @@ onBeforeUnmount(() => {
 }
 
 .chat-head {
-  padding: 22px 32px 16px;
+  padding: 22px 32px 0;
   background: var(--bg-page);
 }
 
-.conn-badge {
-  display: inline-flex;
+/* 会话列表 */
+.session-bar {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+  gap: 8px;
+  padding: 14px 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.session-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.session-chip {
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 7px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #fff;
   color: var(--text-sub);
-  font-size: 12px;
+  font-family: inherit;
+  font-size: 12.5px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: all 0.16s ease;
 }
 
-.conn-badge i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #f0b429;
+.session-chip:hover:not(:disabled) {
+  border-color: var(--el-color-primary-light-5);
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.session-chip.is-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.session-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.session-empty {
+  color: var(--text-faint);
+  font-size: 12.5px;
 }
 
 /* 消息流水 */
@@ -385,6 +599,27 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
 }
 
+.thinking {
+  margin-bottom: 8px;
+  padding: 9px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #fafafd;
+  color: var(--text-sub);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.thinking summary {
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.thinking p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
 .bubble {
   padding: 13px 16px;
   border: 1px solid var(--line);
@@ -397,6 +632,7 @@ onBeforeUnmount(() => {
 
 .bubble p {
   margin: 0 0 10px;
+  white-space: pre-wrap;
 }
 
 .bubble p:last-child {
@@ -411,18 +647,20 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 18px rgba(91, 91, 214, 0.22);
 }
 
-.sources {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 9px;
+.cursor {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--brand);
+  animation: blink 1s infinite;
 }
 
-.sources-label {
-  margin-right: 2px;
-  color: var(--text-faint);
-  font-size: 11.5px;
+.error-line {
+  margin: 8px 0 0;
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 
 /* 打字指示 */
@@ -465,10 +703,33 @@ onBeforeUnmount(() => {
 /* 输入区 */
 .composer {
   flex: 0 0 auto;
-  padding: 14px 32px 16px;
+  padding: 12px 32px 16px;
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 820px;
+  margin: 0 auto 8px;
+}
+
+.tools-label {
+  color: var(--text-faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.novel-select {
+  width: 260px;
+}
+
+.tools-empty {
+  color: var(--text-faint);
+  font-size: 12px;
 }
 
 .composer-inner {

@@ -84,8 +84,8 @@ func (openai *openai) AnswerDirect(ctx context.Context, system string, prompt st
 			openais.UserMessage(prompt),
 		},
 		Temperature: openais.Float(0),
-		MaxTokens:   openais.Int(512),
-	})
+		MaxTokens:   openais.Int(1024),
+	}, option.WithJSONSet("chat_template_kwargs", map[string]any{"enable_thinking": false}))
 	if err != nil {
 		return nil, fmt.Errorf("调用语言模型失败，详细错误信息：%w", err)
 	}

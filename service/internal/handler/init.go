@@ -13,14 +13,17 @@ var (
 	novel *novelHandler = nil
 	// mission 分析任务处理器。
 	mission *missionHandler = nil
+	// converse 用户对话服务。
+	converse *converseHandler = nil
 )
 
-// Initalize 初始化处理器层。
-func Initalize() {
+// Initialize 初始化处理器层。
+func Initialize() {
 	account = &accountHandler{}
 	origin = &originHandler{}
 	novel = &novelHandler{}
 	mission = &missionHandler{}
+	converse = &converseHandler{}
 }
 
 // Register 注册处理器路由。
@@ -29,4 +32,5 @@ func Register(engine *gin.Engine) {
 	origin.register(engine)
 	novel.register(engine)
 	mission.register(engine)
+	converse.register(engine)
 }

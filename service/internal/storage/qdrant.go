@@ -42,3 +42,40 @@ func (qdrant *qdrant) DeletePoints(ctx context.Context, field string, keyword st
 	})
 	return err
 }
+
+// FilterPoints 条件查询向量。
+func (qdrant *qdrant) FilterPoints(ctx context.Context, vector []float32, novels []string, limit int32, threshold float32) ([]segment, error) {
+	// 查询向量数据。
+	points, err := qdrant.client.Query(ctx, &qdrants.QueryPoints{
+		CollectionName: config.Config.Qdrant.Collection,
+		Query:          qdrants.NewQueryNearest(qdrants.NewVectorInputDense(vector)),
+		Filter:         &qdrants.Filter{Must: []*qdrants.Condition{qdrants.NewMatchKeywords("novel", novels...)}},
+		Limit:          new(uint64(limit)),
+		ScoreThreshold: new(threshold),
+		WithPayload:    qdrants.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// 整理选出切片。
+	segments := make([]segment, 0, len(points))
+	for _, point := range points {
+		segments = append(segments, segment{
+			Id:      point.Id.GetUuid(),
+			Score:   point.Score,
+			Novel:   point.Payload["novel"].GetStringValue(),
+			Chapter: point.Payload["chapter"].GetStringValue(),
+			Serial:  int32(point.Payload["serial"].GetIntegerValue()),
+		})
+	}
+	return segments, nil
+}
+
+// 选出切片。
+type segment struct {
+	Id      string
+	Novel   string
+	Chapter string
+	Serial  int32
+	Score   float32
+}

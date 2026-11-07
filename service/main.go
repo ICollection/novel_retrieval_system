@@ -15,14 +15,14 @@ import (
 
 func main() {
 	// 初始化存储层。
-	storage.Initalize()
+	storage.Initialize()
 	defer storage.Dispose()
 	// 初始化服务层。
-	service.Initalize()
+	service.Initialize()
 	// 初始化处理层。
-	handler.Initalize()
+	handler.Initialize()
 	// 启动任务调度。
-	pipeline.Initalize()
+	pipeline.Initialize()
 	defer pipeline.Dispose()
 	// 设置运行模式。
 	switch config.Config.Station.Mode {
