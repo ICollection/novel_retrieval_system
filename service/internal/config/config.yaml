@@ -16,7 +16,7 @@ station:
 # 模型服务（OpenAI 兼容接口）
 models:
   # 向量模型
-  embedding:
+  embed:
     # 接口地址，包含版本路径
     address: http://192.168.1.100:5050/v1
     # 模型名称
@@ -25,8 +25,18 @@ models:
     key: ""
     # 请求超时时间（秒）
     timeout: 60
-  # 语言模型
-  language:
+  # 大语言模型
+  large:
+    # 接口地址，包含版本路径
+    address: http://192.168.1.100:5050/v1
+    # 模型名称（使用前请填写）
+    name: "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ2_M"
+    # 接口密钥，为空表示不需要认证
+    key: ""
+    # 请求超时时间（秒）
+    timeout: 120
+  # 小语言模型
+  small:
     # 接口地址，包含版本路径
     address: http://192.168.1.100:5050/v1
     # 模型名称（使用前请填写）

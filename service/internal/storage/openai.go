@@ -15,11 +15,21 @@ type openai struct {
 	client *openais.Client
 }
 
-// createOpenaiLLM 创建 OpenAI 语言模型连接。
+// createOpenaiLLM 创建 OpenAI 大语言模型连接。
 func createOpenaiLLM() (*openai, error) {
-	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Language.Address)}
-	if config.Config.Models.Language.Key != "" {
-		options = append(options, option.WithAPIKey(config.Config.Models.Language.Key))
+	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Large.Address)}
+	if config.Config.Models.Large.Key != "" {
+		options = append(options, option.WithAPIKey(config.Config.Models.Large.Key))
+	}
+	client := openais.NewClient(options...)
+	return &openai{client: &client}, nil
+}
+
+// createOpenaiSLM 创建 OpenAI 小语言模型连接。
+func createOpenaiSLM() (*openai, error) {
+	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Small.Address)}
+	if config.Config.Models.Small.Key != "" {
+		options = append(options, option.WithAPIKey(config.Config.Models.Small.Key))
 	}
 	client := openais.NewClient(options...)
 	return &openai{client: &client}, nil
@@ -27,21 +37,21 @@ func createOpenaiLLM() (*openai, error) {
 
 // createOpenaiVMD 创建 OpenAI 向量模型连接。
 func createOpenaiVMD() (*openai, error) {
-	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Embedding.Address)}
-	if config.Config.Models.Embedding.Key != "" {
-		options = append(options, option.WithAPIKey(config.Config.Models.Embedding.Key))
+	options := []option.RequestOption{option.WithBaseURL(config.Config.Models.Embed.Address)}
+	if config.Config.Models.Embed.Key != "" {
+		options = append(options, option.WithAPIKey(config.Config.Models.Embed.Key))
 	}
 	client := openais.NewClient(options...)
 	return &openai{client: &client}, nil
 }
 
-// GetEmbedding 获取文本向量。
-func (openai *openai) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Models.Embedding.Timeout))
+// ComputeVector 计算文本向量。
+func (openai *openai) ComputeVector(ctx context.Context, text string) ([]float32, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(config.Config.Models.Embed.Timeout))
 	defer cancel()
 	// 获取文本向量。
 	response, err := openai.client.Embeddings.New(ctx, openais.EmbeddingNewParams{
-		Model: config.Config.Models.Embedding.Name,
+		Model: config.Config.Models.Embed.Name,
 		Input: openais.EmbeddingNewParamsInputUnion{
 			OfString: openais.String(text),
 		},

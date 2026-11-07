@@ -27,20 +27,13 @@ type station struct {
 
 // models 模型服务配置。
 type models struct {
-	Embedding embeddingModel `mapstructure:"embedding"`
-	Language  languageModel  `mapstructure:"language"`
+	Embed model `mapstructure:"embed"`
+	Large model `mapstructure:"large"`
+	Small model `mapstructure:"small"`
 }
 
-// embeddingModel 向量模型配置。
-type embeddingModel struct {
-	Address string `mapstructure:"address"`
-	Name    string `mapstructure:"name"`
-	Key     string `mapstructure:"key"`
-	Timeout int    `mapstructure:"timeout"`
-}
-
-// languageModel 语言模型配置。
-type languageModel struct {
+// model 各类模型配置。
+type model struct {
 	Address string `mapstructure:"address"`
 	Name    string `mapstructure:"name"`
 	Key     string `mapstructure:"key"`

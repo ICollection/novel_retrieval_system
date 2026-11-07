@@ -7,8 +7,10 @@ var (
 	VDB *qdrant
 	// OSS 对象存储连接。
 	OSS *minio
-	// LLM 语言模型连接。
+	// LLM 大语言模型连接。
 	LLM *openai
+	// SLM 小语言模型连接。
+	SLM *openai
 	// VMD 向量模型连接。
 	VMD *openai
 )
@@ -28,8 +30,12 @@ func Initalize() error {
 	if OSS, err = createMinio(); err != nil {
 		return err
 	}
-	// 初始化语言模型连接。
+	// 初始化大语言模型连接。
 	if LLM, err = createOpenaiLLM(); err != nil {
+		return err
+	}
+	// 初始化小语言模型连接。
+	if SLM, err = createOpenaiSLM(); err != nil {
 		return err
 	}
 	// 初始化向量模型连接。

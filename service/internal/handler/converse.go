@@ -45,12 +45,12 @@ func (handler *converseHandler) appendMessage(ctx *gin.Context) {
 		return
 	}
 	// 保存用户消息。
-	session_id, message_id, _, err := service.Converse.AppendHumanMessage(ctx, session, content, novels)
+	sessionId, messageId, _, err := service.Converse.AppendHumanMessage(ctx, session, content, novels)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return
 	}
-	log.Printf("会话编码：%s，消息编码：%s", session_id, message_id)
+	log.Printf("会话编码：%s，消息编码：%s", sessionId, messageId)
 	// 生成系统消息。
 	answer := "aaaaa"
 	// 保存系统消息。

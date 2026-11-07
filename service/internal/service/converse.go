@@ -40,7 +40,7 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 		// 保存会话消息。
 		batch := storage.RDB.CreateBatch()
 		batch.AppendCommand("insert into session(id,title,summary,contain,current,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8);", session_id, title, nil, nil, serial, claims.Subject, moment, moment)
-		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complate,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session_id, serial, true, content, strings.Join(novels, ","), nil, true, moment)
+		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session_id, serial, true, content, strings.Join(novels, ","), nil, true, moment)
 		err := storage.RDB.BatchNaught(ctx, batch)
 		if err != nil {
 			return nil, nil, nil, err
@@ -57,7 +57,7 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 		// 保存会话消息。
 		batch := storage.RDB.CreateBatch()
 		batch.AppendCommand("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
-		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complate,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, true, content, strings.Join(novels, ","), nil, true, moment)
+		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, true, content, strings.Join(novels, ","), nil, true, moment)
 		err = storage.RDB.BatchNaught(ctx, batch)
 		if err != nil {
 			return nil, nil, nil, err
@@ -68,7 +68,7 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 }
 
 // AppendModelMessage 增加会话模型消息。
-func (service *converseService) AppendModelMessage(ctx *gin.Context, session *string, content *string, novels []string, segments []string, complate bool) (*string, *string, *int, error) {
+func (service *converseService) AppendModelMessage(ctx *gin.Context, session *string, content *string, novels []string, segments []string, complete bool) (*string, *string, *int, error) {
 	// 组织会话消息。
 	moment := time.Now().UTC()
 	message_id := strings.ToUpper(uuid.NewV4().String())
@@ -80,7 +80,7 @@ func (service *converseService) AppendModelMessage(ctx *gin.Context, session *st
 	// 保存会话消息。
 	batch := storage.RDB.CreateBatch()
 	batch.AppendCommand("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
-	batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complate,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complate, moment)
+	batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complete, moment)
 	err = storage.RDB.BatchNaught(ctx, batch)
 	if err != nil {
 		return nil, nil, nil, err

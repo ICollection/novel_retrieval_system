@@ -32,7 +32,7 @@ func vectorize(ctx context.Context, mission string, novel string) (int32, error)
 		}
 		// 依次保存切片。
 		for _, segment := range segments {
-			vector, err := storage.VMD.GetEmbedding(ctx, *segment.Content)
+			vector, err := storage.VMD.ComputeVector(ctx, *segment.Content)
 			if err != nil {
 				return current, fmt.Errorf("切片向量入库失败，详细错误信息：%w", err)
 			}

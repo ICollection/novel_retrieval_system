@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/spf13/viper"
 )
@@ -21,22 +22,34 @@ var Config *config
 func init() {
 	cfg, err := parse()
 	if err != nil {
-		log.Fatal("初始化配置失败，详细错误信息：", err)
+		log.Fatal("解析系统配置失败，详细错误信息：", err)
 	}
 	Config = cfg
 }
 
-// parse 解析内嵌的配置文件。
+// parse 解析配置文件。
 func parse() (*config, error) {
+	// 读取配置文件。
 	reader := viper.New()
 	reader.SetConfigType("yaml")
 	if err := reader.ReadConfig(bytes.NewReader(content)); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败，详细错误信息：%w", err)
+		return nil, fmt.Errorf("读取配置文件失败，详细错误信息：%w", err)
 	}
-
+	// 解析配置文件。
 	cfg := &config{}
 	if err := reader.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("反序列化配置文件失败，详细错误信息：%w", err)
+		return nil, fmt.Errorf("解析配置文件失败，详细错误信息：%w", err)
 	}
+	// 补充环境变量。
+	if cfg.Models.Embed.Key == "" {
+		cfg.Models.Embed.Key = os.Getenv("NOVEL_EMBED_KEY")
+	}
+	if cfg.Models.Large.Key == "" {
+		cfg.Models.Large.Key = os.Getenv("NOVEL_LARGE_KEY")
+	}
+	if cfg.Models.Small.Key == "" {
+		cfg.Models.Small.Key = os.Getenv("NOVEL_SMALL_KEY")
+	}
+	// 返回配置信息。
 	return cfg, nil
 }
