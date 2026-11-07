@@ -17,9 +17,9 @@ type missionHandler struct {
 // register 注册路由分组。
 func (handler *missionHandler) register(engine *gin.Engine) {
 	group := engine.Group(config.Config.Station.ContextPath + "/mission")
-	group.POST("/filter", server.TestLogin, handler.filter)
-	group.POST("/launch", server.TestPermit(common.PermissionManageMission), handler.launch)
-	group.POST("/cancel", server.TestPermit(common.PermissionManageMission), handler.cancel)
+	group.GET("/filter", server.TestLogin, handler.filter)
+	group.PATCH("/launch", server.TestPermit(common.PermissionManageMission), handler.launch)
+	group.PATCH("/cancel", server.TestPermit(common.PermissionManageMission), handler.cancel)
 }
 
 // filter 查询分析任务。

@@ -78,6 +78,9 @@ const statusMeta: Record<string, { label: string; type: TagType }> = {
 /** 正在处理中的状态。 */
 const runningStatus = ['02', '03', '04', '05']
 
+/** 允许删除的状态：待启动、已完成、已失败、已取消。 */
+const deletableStatus = ['01', '06', '07', '08']
+
 /** 本地上传条目，只保留上传中和失败的记录。 */
 interface LocalFile {
   key: number
@@ -160,8 +163,8 @@ async function refresh(silent = false) {
   if (!silent) loading.value = true
   try {
     const [novelContent, missionContent] = await Promise.all([
-      request<NovelItem[]>('/novel/filter', { method: 'POST', token: session.token }),
-      request<MissionItem[]>('/mission/filter', { method: 'POST', token: session.token })
+      request<NovelItem[]>('/novel/filter', { token: session.token }),
+      request<MissionItem[]>('/mission/filter', { token: session.token })
     ])
     novels.value = Array.isArray(novelContent) ? novelContent : []
     missions.value = Array.isArray(missionContent) ? missionContent : []
@@ -238,7 +241,7 @@ async function act(path: string, mission: MissionItem, message: string) {
   if (!session) return
   try {
     await request<unknown>(path, {
-      method: 'POST',
+      method: 'PATCH',
       token: session.token,
       query: { id: mission.id }
     })
@@ -290,7 +293,7 @@ async function saveTitle() {
   saving.value = true
   try {
     await request<string>('/novel/modify', {
-      method: 'POST',
+      method: 'PATCH',
       token: session.token,
       query: { id: editing.value.id, title }
     })
@@ -301,6 +304,41 @@ async function saveTitle() {
     ElMessage.error(error instanceof Error ? error.message : '修改失败')
   } finally {
     saving.value = false
+  }
+}
+
+/** 正在删除的小说标识，避免重复提交。 */
+const deleting = ref<string | null>(null)
+
+/** 删除小说，连同任务、章节、分片、向量与原始文件一起清除。 */
+async function removeNovel(novel: NovelItem) {
+  if (!session) return
+  if (!deletableStatus.includes(novel.status ?? '')) {
+    ElMessage.warning('任务正在处理，无法删除。')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `删除《${novel.title || '未命名'}》会同时清除其任务、章节、分片、向量与原始文件，且不可恢复。确定删除吗？`,
+      '删除小说',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  deleting.value = novel.id
+  try {
+    await request<string>('/novel/delete', {
+      method: 'DELETE',
+      token: session.token,
+      query: { id: novel.id }
+    })
+    ElMessage.success(`已删除：${novel.title || novel.id}`)
+    await refresh(true)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '删除失败')
+  } finally {
+    deleting.value = null
   }
 }
 
@@ -538,9 +576,28 @@ onBeforeUnmount(() => {
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="90" align="right">
+        <el-table-column label="操作" width="150" align="right">
           <template #default="{ row }">
             <el-button link type="primary" :disabled="!canModify" @click="openEdit(row)">修改</el-button>
+            <el-tooltip
+              v-if="!deletableStatus.includes(row.status ?? '')"
+              content="任务正在处理，无法删除"
+              placement="top"
+            >
+              <span class="action-disabled">
+                <el-button link type="danger" disabled>删除</el-button>
+              </span>
+            </el-tooltip>
+            <el-button
+              v-else
+              link
+              type="danger"
+              :disabled="!canModify"
+              :loading="deleting === row.id"
+              @click="removeNovel(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -774,6 +831,12 @@ onBeforeUnmount(() => {
   color: var(--text-faint);
   font-size: 11.5px;
   white-space: nowrap;
+}
+
+/* 禁用态的删除按钮包裹层，保持与前一按钮的间距 */
+.action-disabled {
+  display: inline-block;
+  margin-left: 12px;
 }
 
 @media (max-width: 900px) {

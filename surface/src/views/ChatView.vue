@@ -150,7 +150,7 @@ async function loadNovels() {
     return
   }
   try {
-    const content = await request<NovelItem[]>('/novel/filter', { method: 'POST', token })
+    const content = await request<NovelItem[]>('/novel/filter', { token })
     novels.value = (Array.isArray(content) ? content : []).filter((item) => item.status === '06')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载小说失败')
