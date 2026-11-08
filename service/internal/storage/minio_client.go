@@ -81,7 +81,6 @@ func (mc *MinioClient) Upload(ctx context.Context, path string, file string, dat
 }
 
 // Delete 删除对象。
-// Delete 删除对象。
 //
 // param: ctx 上下文。
 // param: path 对象路径。

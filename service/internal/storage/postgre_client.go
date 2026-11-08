@@ -104,7 +104,7 @@ func (pc *PostgreClient) QuerySingle[T any](ctx context.Context, sql string, arg
 func (pc *PostgreClient) QuerySimple[T any](ctx context.Context, sql string, arguments ...any) (*T, error) {
 	ctx, cancel := context.WithTimeout(ctx, pc.timeout)
 	defer cancel()
-	var result *T = nil
+	var result *T
 	err := pc.pool.QueryRow(ctx, sql, arguments...).Scan(&result)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -148,7 +148,7 @@ func (pc *PostgreClient) BatchNaught(ctx context.Context, batch *Batch) error {
 	return nil
 }
 
-// Close 关闭连接池。
+// dispose 关闭连接池。
 func (pc *PostgreClient) dispose() {
 	pc.pool.Close()
 }

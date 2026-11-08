@@ -32,7 +32,7 @@ func newQdrantClient(cfg config.Qdrant) (*QdrantClient, error) {
 // return: 错误信息。
 func (qc *QdrantClient) CreateCollection() error {
 	ctx := context.Background()
-	if exists, err := qc.client.CollectionExists(ctx, config.Cfg.Qdrant.Collection); err != nil {
+	if exists, err := qc.client.CollectionExists(ctx, qc.collection); err != nil {
 		slog.Error("[VDB]检测集合失败", "error", err)
 		return err
 	} else if exists == false {

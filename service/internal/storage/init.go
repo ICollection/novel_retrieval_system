@@ -18,6 +18,8 @@ var (
 )
 
 // Initialize 初始化存储层。
+//
+// return: 错误信息。
 func Initialize() error {
 	var err error
 	// 初始化关系数据库连接。
