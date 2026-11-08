@@ -68,13 +68,13 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 }
 
 // AppendModelMessage 增加会话模型消息。
-func (service *converseService) AppendModelMessage(ctx *gin.Context, session *string, content *string, novels []string, segments []string, complete bool) (*string, *string, *int, error) {
+func (service *converseService) AppendModelMessage(ctx *gin.Context, session *string, content *string, novels []string, segments []string, complete bool) error {
 	// 组织会话消息。
 	moment := time.Now().UTC()
 	message_id := strings.ToUpper(uuid.NewV4().String())
 	current, err := storage.RDB.QuerySimple[int](ctx, "select current from session where id=$1", session)
 	if err != nil {
-		return session, nil, nil, err
+		return err
 	}
 	serial := *current + 1
 	// 保存会话消息。
@@ -83,10 +83,9 @@ func (service *converseService) AppendModelMessage(ctx *gin.Context, session *st
 	batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complete, moment)
 	err = storage.RDB.BatchNaught(ctx, batch)
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
-	// 返回消息编码。
-	return session, &message_id, &serial, nil
+	return nil
 }
 
 // FilterRecentMessage 查找近期会话消息。

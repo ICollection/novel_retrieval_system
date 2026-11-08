@@ -9,6 +9,7 @@ require (
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/openai/openai-go/v3 v3.94.0
 	github.com/qdrant/go-client v1.20.1
+	github.com/samber/lo v1.53.0
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/text v0.43.0
