@@ -105,7 +105,7 @@ func (service *converseService) FilterRecentMessage(ctx *gin.Context, id *string
 }
 
 // FilterEffectMessage 查找有效会话消息。
-func (service *converseService) FilterEffectMessage(ctx *gin.Context, id *string) ([]string, error) {
+func (service *converseService) FilterEffectMessage(ctx *gin.Context, id string) ([]string, error) {
 	result := []string{}
 	// 获取会话记录。
 	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)

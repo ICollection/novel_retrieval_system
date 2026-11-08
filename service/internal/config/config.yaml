@@ -28,9 +28,9 @@ models:
   # 大语言模型
   large:
     # 接口地址，包含版本路径
-    address: http://192.168.1.100:5050/v1
+    address: https://api.deepseek.com
     # 模型名称（使用前请填写）
-    name: "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ2_M"
+    name: "deepseek-flash"
     # 接口密钥，为空表示不需要认证
     key: ""
     # 请求超时时间（秒）

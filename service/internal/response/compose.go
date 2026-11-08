@@ -2,6 +2,7 @@ package response
 
 import (
 	"fmt"
+	"log"
 	"service/internal/service"
 	"service/internal/storage"
 	"strings"
@@ -17,22 +18,31 @@ func ComposeAnswer(ctx *gin.Context, session *string, content *string, novels []
 		return nil, err
 	}
 	// 获取问题向量。
-	question, err := getQuestionVector(ctx, session, content)
+	question, err := getQuestionVector(ctx, *session, content)
 	if err != nil {
 		return nil, err
 	}
 	// 召回相关切片。
 	if question == nil {
+		log.Printf("================")
 
 	} else {
-
+		prompt, references, err := getFormalPrompt(ctx, *session, question, novels)
+		if err != nil {
+			return nil, err
+		}
+		answer, err := storage.LLM.AnswerStream(ctx, getFormalSystem(), *prompt, callback)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println(answer)
+		fmt.Println(references)
 	}
-	getRelateSegment(ctx, question, novels)
 	return session, nil
 }
 
 // getQuestionVector 获取问题向量。
-func getQuestionVector(ctx *gin.Context, session *string, content *string) ([]float32, error) {
+func getQuestionVector(ctx *gin.Context, session string, content *string) ([]float32, error) {
 	// 获取查询文本。
 	system := getRecallSystem()
 	prompt, err := getRecallPrompt(ctx, session)
@@ -119,7 +129,7 @@ func getRecallSystem() string {
 }
 
 // getRecallPrompt 获取召回用用户提示词。
-func getRecallPrompt(ctx *gin.Context, session *string) (*string, error) {
+func getRecallPrompt(ctx *gin.Context, session string) (*string, error) {
 	prompts, err := service.Converse.FilterEffectMessage(ctx, session)
 	if err != nil {
 		return nil, err
@@ -128,27 +138,7 @@ func getRecallPrompt(ctx *gin.Context, session *string) (*string, error) {
 	return &result, nil
 }
 
-// getRelateSegment 获取相关切片。
-func getRelateSegment(ctx *gin.Context, question []float32, novels []string) (*string, error) {
-	// 查询相关切片。
-	segments, err := storage.VDB.FilterPoints(ctx, question, novels, 20, 0.5)
-	if err != nil {
-		return nil, err
-	}
-	// 合并相关区片。
-	sections := sections{sections: []section{}}
-	for _, segment := range segments {
-		sections.append(segment.Novel, segment.Chapter, segment.Serial)
-	}
-	// 查询拼写提示。
-	for _, section := range sections.sections {
-		// storage.RDB.QueryMatrix[string](ctx,"select ")
-		fmt.Println(section)
-	}
-	return nil, err
-}
-
-// 获取提问用系统提示词。
+// getFormalSystem 获取提问用系统提示词。
 func getFormalSystem() string {
 	return `
 你是一个小说内容问答助手。用户会就指定的若干部小说提问，你需要根据提供的参考片段作答。
@@ -164,24 +154,80 @@ func getFormalSystem() string {
 8. 不要输出寒暄、免责说明、对自身能力的介绍。
 
 示例一：
-参考片段：
-[1] 《红楼梦》第三回：林黛玉初进荣国府，贾母见了，一把搂入怀中，心肝儿肉叫着大哭起来。
-[2] 《红楼梦》第三回：王熙凤初见黛玉，笑道：“天下真有这样标致的人物，我今儿才算见了！”
+====== 参考片段[1]《红楼梦》第三回 ======
+林黛玉初进荣国府，贾母见了，一把搂入怀中，心肝儿肉叫着大哭起来。
+====== 参考片段[2]《红楼梦》第三回 ======
+王熙凤初见黛玉，笑道：“天下真有这样标致的人物，我今儿才算见了！”
 
 用户提问：黛玉初到贾府时，贾母和王熙凤各是什么反应？
 回答：贾母一见黛玉便搂入怀中大哭[1]；王熙凤则笑着称赞黛玉标致[2]。
 
 示例二：
-参考片段：
-[1] 《红楼梦》第三回：林黛玉初进荣国府，拜见了贾母。
+====== 参考片段[1]《红楼梦》第三回 ======
+林黛玉初进荣国府，拜见了贾母。
 
 用户提问：林黛玉的父亲林如海最后官至何职？
 回答：根据现有片段无法回答。片段仅写到黛玉初进荣国府拜见贾母[1]，没有涉及林如海的官职。`
 }
 
-// 获取提问用用户提示词。
-func getFormalPrompt() string {
-	return ""
+// getSupplyPrompt 获取提问用参考提示词。
+func getSupplyPrompt(ctx *gin.Context, question []float32, novels []string) ([]string, []reference, error) {
+	result := []string{}
+	references := []reference{}
+	// 查询相关切片。
+	segments, err := storage.VDB.FilterPoints(ctx, question, novels, 20, 0.5)
+	if err != nil {
+		return nil, nil, err
+	}
+	// 合并相关区片。
+	sections := sections{sections: []section{}}
+	for _, segment := range segments {
+		sections.append(segment.Novel, segment.Chapter, segment.Serial)
+	}
+	// 查询拼写提示。
+	for i, section := range sections.sections {
+		var builder strings.Builder
+		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select segment.id as segment_id,novel.id as novel_id,novel.title as novel_title,chapter.id as chapter_id,chapter.title as chapter_title,segment.prefix,segment.middle,segment.suffix from segment inner join novel on novel.id=segment.novel inner join chapter on chapter.id=segment.chapter where segment.novel=$1 and segment.chapter=$2 and segment.serial>=$3 and segment.serial<=$4 order by segment.serial;", section.novel, section.chapter, section.start, section.final)
+		if err != nil || len(segments) == 0 {
+			return nil, nil, err
+		}
+		for j, segment := range segments {
+			if j == 0 && segment.Prefix != nil {
+				builder.WriteString(*segment.Prefix)
+				builder.WriteString("\n")
+			}
+			builder.WriteString(*segment.Middle)
+			builder.WriteString("\n")
+			if segment.Suffix != nil {
+				builder.WriteString(*segment.Suffix)
+				builder.WriteString("\n")
+			}
+		}
+		result = append(result, fmt.Sprintf("====== 参考片段【%d】《%s》%s ======", i+1, segments[0].NovelTitle, segments[0].ChapterTitle))
+		result = append(result, builder.String())
+		references = append(references, reference{Serial: i + 1, NovelId: segments[0].NovelId, NovelTitle: segments[0].NovelTitle, ChapterId: segments[0].ChapterId, ChapterTitle: segments[0].ChapterTitle})
+	}
+	return result, references, err
+}
+
+// getFormalPrompt 获取提问用用户提示词。
+func getFormalPrompt(ctx *gin.Context, session string, question []float32, novels []string) (*string, []reference, error) {
+	prompts := []string{}
+	// 获取参考提示词。
+	supply, reference, err := getSupplyPrompt(ctx, question, novels)
+	if err != nil {
+		return nil, nil, err
+	}
+	prompts = append(prompts, supply...)
+	// 获取近期提示词。
+	recents, err := service.Converse.FilterEffectMessage(ctx, session)
+	if err != nil {
+		return nil, nil, err
+	}
+	prompts = append(prompts, recents...)
+	// 返回用户提示词。
+	result := strings.Join(prompts, "\n")
+	return &result, reference, nil
 }
 
 // 分片区间集合。
@@ -239,4 +285,25 @@ type section struct {
 	chapter string
 	start   int32
 	final   int32
+}
+
+// segment 分片数据。
+type segment struct {
+	SegmentId    *string `db:"segment_id"`
+	NovelId      *string `db:"novel_id"`
+	NovelTitle   *string `db:"novel_title"`
+	ChapterId    *string `db:"chapter_id"`
+	ChapterTitle *string `db:"chapter_title"`
+	Prefix       *string `db:"prefix"`
+	Middle       *string `db:"middle"`
+	Suffix       *string `db:"suffix"`
+}
+
+// reference 参考资料。
+type reference struct {
+	Serial       int     `json:"serial"`
+	NovelId      *string `json:"novel_id"`
+	NovelTitle   *string `json:"novel_title"`
+	ChapterId    *string `json:"chapter_id"`
+	ChapterTitle *string `json:"chapter_title"`
 }

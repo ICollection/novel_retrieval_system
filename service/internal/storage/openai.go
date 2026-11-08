@@ -3,7 +3,9 @@ package storage
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"log"
 	"service/internal/config"
 	"strings"
 	"time"
@@ -87,10 +89,13 @@ func (openai *openai) AnswerDirect(ctx context.Context, system string, prompt st
 		MaxTokens:   openais.Int(1024),
 	}, option.WithJSONSet("chat_template_kwargs", map[string]any{"enable_thinking": false}))
 	if err != nil {
-		return nil, fmt.Errorf("调用语言模型失败，详细错误信息：%w", err)
+		log.Println("[SLM]", err.Error())
+		return nil, err
 	}
 	if len(response.Choices) == 0 {
-		return nil, fmt.Errorf("调用语言模型失败，详细错误信息：%w", "没有返回结果。")
+		err := errors.New("SLM没有返回结果。")
+		log.Println("[SLM]", err.Error())
+		return nil, err
 	}
 	// 返回最终答案。
 	result := strings.TrimSpace(response.Choices[0].Message.Content)
@@ -125,6 +130,7 @@ func (openai *openai) AnswerStream(ctx context.Context, system string, prompt st
 		if thinking := getThinking(delta); thinking != nil {
 			if err := callback("think", *thinking); err != nil {
 				// 思考过程中用户断开。
+				log.Println("[LLM]", err.Error())
 				result := answer.String()
 				return &result, err
 			}
@@ -134,6 +140,7 @@ func (openai *openai) AnswerStream(ctx context.Context, system string, prompt st
 			answer.WriteString(delta.Content)
 			if err := callback("answer", delta.Content); err != nil {
 				// 回答过程中用户断开。
+				log.Println("[LLM]", err.Error())
 				result := answer.String()
 				return &result, err
 			}
@@ -143,7 +150,8 @@ func (openai *openai) AnswerStream(ctx context.Context, system string, prompt st
 	if err := stream.Err(); err != nil {
 		// 模型或网络中断。
 		result := answer.String()
-		return &result, fmt.Errorf("调用语言模型失败，详细错误信息：%w", err)
+		log.Println("[LLM]", err.Error())
+		return &result, err
 	}
 	// 返回正常结果。
 	result := answer.String()

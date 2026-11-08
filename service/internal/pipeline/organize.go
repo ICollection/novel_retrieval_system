@@ -55,12 +55,20 @@ type paragraph struct {
 
 // fragment 分片信息。
 type fragment struct {
-	// start 起始位置（归一化文档的字符下标）。
-	start int32
-	// final 结束位置（归一化文档的字符下标）。
-	final int32
-	// text 分片正文。
-	text string
+	// prefix 与上一分片重叠的内容，首片为空。
+	prefix *string
+	// middle 分片独有内容。
+	middle string
+	// suffix 与下一分片重叠的内容，末片为空。
+	suffix *string
+	// point1 前缀起始位置（归一化文档的字符下标）。
+	point1 int32
+	// point2 正文起始位置（归一化文档的字符下标）。
+	point2 int32
+	// point3 后缀起始位置（归一化文档的字符下标）。
+	point3 int32
+	// point4 分片结束位置（归一化文档的字符下标）。
+	point4 int32
 }
 
 // organize 分章切片文件。
@@ -207,6 +215,8 @@ func collect(lines []string, starts []int32, from int, to int) []paragraph {
 func section(paragraphs []paragraph) []fragment {
 	groups := make([][2]int, 0)
 	start := 0
+	// lower 本片净片起点，下一片的重叠不能越过它。
+	lower := 0
 	for start < len(paragraphs) {
 		// 向后聚合段落，直至达到长度上限。
 		end := start
@@ -226,8 +236,9 @@ func section(paragraphs []paragraph) []fragment {
 		if end >= len(paragraphs) {
 			break
 		}
-		// 回退若干段落作为下一片的开头。
-		start = rewind(paragraphs, start, end)
+		// 回退若干段落作为下一片的开头，不越过本片净片起点。
+		start = rewind(paragraphs, lower, end)
+		lower = end
 	}
 	// 章节末尾过短的片并入上一片。
 	if len(groups) > 1 {
@@ -242,14 +253,55 @@ func section(paragraphs []paragraph) []fragment {
 	}
 	// 生成分片。
 	result := make([]fragment, 0, len(groups))
-	for _, group := range groups {
-		texts := make([]string, 0, group[1]-group[0])
-		for index := group[0]; index < group[1]; index++ {
-			texts = append(texts, paragraphs[index].text)
+	for index, group := range groups {
+		begin := group[0]
+		end := group[1]
+		// 净片起点：首片即分片起点，其余为上一分片的结尾。
+		middleStart := begin
+		if index > 0 {
+			middleStart = groups[index-1][1]
 		}
-		result = append(result, fragment{start: paragraphs[group[0]].start, final: paragraphs[group[1]-1].final, text: strings.Join(texts, "\n")})
+		// 净片终点：末片即分片结尾，其余为下一分片的起点。
+		middleFinal := end
+		if index+1 < len(groups) {
+			middleFinal = groups[index+1][0]
+		}
+		if middleStart > middleFinal {
+			middleStart = middleFinal
+		}
+		// 组装分片内容。
+		item := fragment{middle: combine(paragraphs, middleStart, middleFinal)}
+		if middleStart > begin {
+			text := combine(paragraphs, begin, middleStart)
+			item.prefix = &text
+		}
+		if middleFinal < end {
+			text := combine(paragraphs, middleFinal, end)
+			item.suffix = &text
+		}
+		// 记录三个分段的文档位置。
+		item.point2 = paragraphs[middleStart].start
+		item.point1 = item.point2
+		if item.prefix != nil {
+			item.point1 = paragraphs[begin].start
+		}
+		item.point4 = paragraphs[end-1].final
+		item.point3 = item.point4
+		if item.suffix != nil {
+			item.point3 = paragraphs[middleFinal].start
+		}
+		result = append(result, item)
 	}
 	return result
+}
+
+// combine 拼接指定段落区间的正文。
+func combine(paragraphs []paragraph, from int, to int) string {
+	texts := make([]string, 0, to-from)
+	for index := from; index < to; index++ {
+		texts = append(texts, paragraphs[index].text)
+	}
+	return strings.Join(texts, "\n")
 }
 
 // rewind 计算下一片的起始段落，保留末尾若干段落作为重叠。
@@ -299,10 +351,8 @@ func store(ctx context.Context, novel string, serial int32, item chapter, offset
 	identifier := strings.ToUpper(uuid.NewV4().String())
 	batch.AppendCommand("insert into chapter(id,novel,serial,title,start,final,character_count) values($1,$2,$3,$4,$5,$6,$7);", identifier, novel, serial, item.title, item.start, item.final, item.final-item.start)
 	// 插入分片记录。
-	heading := prefix(serial, item.title)
 	for index, fragment := range fragments {
-		content := heading + fragment.text
-		batch.AppendCommand("insert into segment(id,novel,chapter,serial,content,character_count,start,final,vector) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, content, int32(utf8.RuneCountInString(content)), fragment.start, fragment.final, false)
+		batch.AppendCommand("insert into segment(id,novel,chapter,serial,point1,prefix,point2,middle,point3,suffix,point4) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);", strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, fragment.point1, fragment.prefix, fragment.point2, fragment.middle, fragment.point3, fragment.suffix, fragment.point4)
 	}
 	// 提交数据事务。
 	err := storage.RDB.BatchNaught(ctx, batch)

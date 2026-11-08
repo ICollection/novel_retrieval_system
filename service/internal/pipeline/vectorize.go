@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"service/internal/storage"
+	"strings"
 	"time"
 )
 
@@ -26,13 +27,13 @@ func vectorize(ctx context.Context, mission string, novel string) (int32, error)
 			return current, ctx.Err()
 		}
 		// 获取一段切片。
-		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select id,chapter,serial,content from segment where novel=$1 and serial>$2 and serial<=$3 order by serial;", novel, i, i+100)
+		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select id,chapter,serial,prefix,middle,suffix from segment where novel=$1 and serial>$2 and serial<=$3 order by serial;", novel, i, i+100)
 		if err != nil {
 			return current, fmt.Errorf("切片向量入库失败，详细错误信息：%w", err)
 		}
 		// 依次保存切片。
 		for _, segment := range segments {
-			vector, err := storage.VMD.ComputeVector(ctx, *segment.Content)
+			vector, err := storage.VMD.ComputeVector(ctx, segment.getContent())
 			if err != nil {
 				return current, fmt.Errorf("切片向量入库失败，详细错误信息：%w", err)
 			}
@@ -56,5 +57,22 @@ type segment struct {
 	Segment *string `db:"id"`
 	Chapter *string `db:"chapter"`
 	Serial  *int32  `db:"serial"`
-	Content *string `db:"content"`
+	Prefix  *string `db:"prefix"`
+	Middle  *string `db:"middle"`
+	Suffix  *string `db:"suffix"`
+}
+
+// 获取分片内容。
+func (segment *segment) getContent() string {
+	builder := strings.Builder{}
+	if segment.Prefix != nil {
+		builder.WriteString(*segment.Prefix)
+		builder.WriteString("\n")
+	}
+	builder.WriteString(*segment.Middle)
+	if segment.Suffix != nil {
+		builder.WriteString("\n")
+		builder.WriteString(*segment.Suffix)
+	}
+	return builder.String()
 }
