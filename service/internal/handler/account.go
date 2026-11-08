@@ -16,7 +16,7 @@ type accountHandler struct {
 
 // register 注册路由分组。
 func (handler *accountHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Station.ContextPath + "/account")
+	group := engine.Group(config.Cfg.Station.ContextPath + "/account")
 	group.POST("/append", server.TestPermit(common.PermissionManageUser), handler.append)
 	group.PATCH("/modify", server.TestPermit(common.PermissionManageUser), handler.modify)
 	group.PATCH("/change", server.TestPermit(common.PermissionManageUser), handler.change)

@@ -346,16 +346,16 @@ func store(ctx context.Context, novel string, serial int32, item chapter, offset
 	// 计算分片。
 	fragments := section(item.paragraphs)
 	// 启动数据事务。
-	batch := storage.RDB.CreateBatch()
+	var batch storage.Batch
 	// 插入章节记录。
 	identifier := strings.ToUpper(uuid.NewV4().String())
-	batch.AppendCommand("insert into chapter(id,novel,serial,title,start,final,character_count) values($1,$2,$3,$4,$5,$6,$7);", identifier, novel, serial, item.title, item.start, item.final, item.final-item.start)
+	batch.Append("insert into chapter(id,novel,serial,title,start,final,character_count) values($1,$2,$3,$4,$5,$6,$7);", identifier, novel, serial, item.title, item.start, item.final, item.final-item.start)
 	// 插入分片记录。
 	for index, fragment := range fragments {
-		batch.AppendCommand("insert into segment(id,novel,chapter,serial,point1,prefix,point2,middle,point3,suffix,point4) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);", strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, fragment.point1, fragment.prefix, fragment.point2, fragment.middle, fragment.point3, fragment.suffix, fragment.point4)
+		batch.Append("insert into segment(id,novel,chapter,serial,point1,prefix,point2,middle,point3,suffix,point4) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11);", strings.ToUpper(uuid.NewV4().String()), novel, identifier, offset+int32(index)+1, fragment.point1, fragment.prefix, fragment.point2, fragment.middle, fragment.point3, fragment.suffix, fragment.point4)
 	}
 	// 提交数据事务。
-	err := storage.RDB.BatchNaught(ctx, batch)
+	err := storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return 0, err
 	}

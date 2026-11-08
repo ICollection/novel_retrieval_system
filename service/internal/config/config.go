@@ -6,17 +6,17 @@ import (
 	"strconv"
 )
 
-// config 应用配置。
-type config struct {
-	Station  station  `mapstructure:"station"`
-	Models   models   `mapstructure:"models"`
-	Postgres postgres `mapstructure:"postgres"`
-	Qdrant   qdrant   `mapstructure:"qdrant"`
-	MinIO    minio    `mapstructure:"minio"`
+// Config 应用配置。
+type Config struct {
+	Station  Station  `mapstructure:"station"`
+	Models   Models   `mapstructure:"models"`
+	Postgres Postgres `mapstructure:"postgres"`
+	Qdrant   Qdrant   `mapstructure:"qdrant"`
+	MinIO    Minio    `mapstructure:"minio"`
 }
 
-// station 站点与登录令牌配置。
-type station struct {
+// Station 站点与登录令牌配置。
+type Station struct {
 	Port        int    `mapstructure:"port"`
 	ContextPath string `mapstructure:"context_path"`
 	Mode        string `mapstructure:"mode"`
@@ -25,23 +25,23 @@ type station struct {
 	Concurrency int    `mapstructure:"concurrency"`
 }
 
-// models 模型服务配置。
-type models struct {
-	Embed model `mapstructure:"embed"`
-	Large model `mapstructure:"large"`
-	Small model `mapstructure:"small"`
+// Models 模型服务配置。
+type Models struct {
+	Embed Model `mapstructure:"embed"`
+	Large Model `mapstructure:"large"`
+	Small Model `mapstructure:"small"`
 }
 
-// model 各类模型配置。
-type model struct {
+// Model 各类模型配置。
+type Model struct {
 	Address string `mapstructure:"address"`
 	Name    string `mapstructure:"name"`
 	Key     string `mapstructure:"key"`
 	Timeout int    `mapstructure:"timeout"`
 }
 
-// postgres 数据库连接配置。
-type postgres struct {
+// Postgres 数据库连接配置。
+type Postgres struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Username string `mapstructure:"username"`
@@ -52,13 +52,13 @@ type postgres struct {
 }
 
 // GetDSN 获取连接字符串。
-func (postgres *postgres) GetDSN() string {
-	url := url.URL{Scheme: "postgres", User: url.UserPassword(postgres.Username, postgres.Password), Host: net.JoinHostPort(postgres.Host, strconv.Itoa(postgres.Port)), Path: "/" + postgres.Database, RawQuery: "sslmode=" + postgres.SSLMode}
+func (p *Postgres) GetDSN() string {
+	url := url.URL{Scheme: "postgres", User: url.UserPassword(p.Username, p.Password), Host: net.JoinHostPort(p.Host, strconv.Itoa(p.Port)), Path: "/" + p.Database, RawQuery: "sslmode=" + p.SSLMode}
 	return url.String()
 }
 
-// qdrant 向量数据库连接配置。
-type qdrant struct {
+// Qdrant 向量数据库连接配置。
+type Qdrant struct {
 	Host       string `mapstructure:"host"`
 	Port       int    `mapstructure:"port"`
 	APIKey     string `mapstructure:"api_key"`
@@ -66,8 +66,8 @@ type qdrant struct {
 	Timeout    int    `mapstructure:"timeout"`
 }
 
-// minio 对象存储配置。
-type minio struct {
+// Minio 对象存储配置。
+type Minio struct {
 	Endpoint  string `mapstructure:"endpoint"`
 	Port      int    `mapstructure:"port"`
 	AccessKey string `mapstructure:"access_key"`

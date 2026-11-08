@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"service/internal/common"
 	"service/internal/server"
 	"service/internal/storage"
@@ -15,6 +16,9 @@ import (
 type converseService struct{}
 
 // FilterSession 查询用户会话。
+//
+// param: ctx 上下文。
+// return: 用户会话，错误信息。
 func (service *converseService) FilterSession(ctx *gin.Context) ([]session, error) {
 	claims := ctx.MustGet("claims").(*server.Claims)
 	// 查询用户会话。
@@ -23,6 +27,58 @@ func (service *converseService) FilterSession(ctx *gin.Context) ([]session, erro
 		return nil, err
 	}
 	return result, nil
+}
+
+// ModifySession 修改用户会话。
+//
+// param: ctx 上下文。
+// param: id 会话编码。
+// param: title 对话标题。
+// return: 用户会话，错误信息。
+func (service *converseService) ModifySession(ctx *gin.Context, id string, title string) (*string, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	// 验证会话存在。
+	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
+	if err != nil {
+		return nil, err
+	}
+	if *session.CreateUser != claims.Subject {
+		return nil, errors.New("会话不是用户创建。")
+	}
+	// 修改用户会话。
+	err = storage.RDB.QueryNaught(ctx, "update session set title=$1 where id=$2 ", title, id)
+	if err != nil {
+		return nil, err
+	}
+	// 返回会话编码。
+	return session.Id, nil
+}
+
+// DeleteSession 删除用户会话。
+//
+// param: ctx 上下文。
+// param: id 会话编码。
+// return: 会话编码，错误信息。
+func (service *converseService) DeleteSession(ctx *gin.Context, id string) (*string, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	// 验证会话存在。
+	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
+	if err != nil {
+		return nil, err
+	}
+	if *session.CreateUser != claims.Subject {
+		return nil, errors.New("会话不是用户创建。")
+	}
+	// 删除用户会话。
+	var batch storage.Batch
+	batch.Append("delete from message where session=$1", session.Id)
+	batch.Append("delete from session where id=$1", session.Id)
+	err = storage.RDB.BatchNaught(ctx, &batch)
+	if err != nil {
+		return nil, err
+	}
+	// 返回会话编码。
+	return session.Id, nil
 }
 
 // AppendHumanMessage 增加会话用户消息。
@@ -38,10 +94,10 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 		title := common.Truncate(*content, 50)
 		serial := 1
 		// 保存会话消息。
-		batch := storage.RDB.CreateBatch()
-		batch.AppendCommand("insert into session(id,title,summary,contain,current,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8);", session_id, title, nil, nil, serial, claims.Subject, moment, moment)
-		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session_id, serial, true, content, strings.Join(novels, ","), nil, true, moment)
-		err := storage.RDB.BatchNaught(ctx, batch)
+		var batch storage.Batch
+		batch.Append("insert into session(id,title,summary,contain,current,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8);", session_id, title, nil, nil, serial, claims.Subject, moment, moment)
+		batch.Append("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session_id, serial, true, content, strings.Join(novels, ","), nil, true, moment)
+		err := storage.RDB.BatchNaught(ctx, &batch)
 		if err != nil {
 			return nil, err
 		}
@@ -55,10 +111,10 @@ func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *st
 		}
 		serial := *current + 1
 		// 保存会话消息。
-		batch := storage.RDB.CreateBatch()
-		batch.AppendCommand("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
-		batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, true, content, strings.Join(novels, ","), nil, true, moment)
-		err = storage.RDB.BatchNaught(ctx, batch)
+		var batch storage.Batch
+		batch.Append("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
+		batch.Append("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, true, content, strings.Join(novels, ","), nil, true, moment)
+		err = storage.RDB.BatchNaught(ctx, &batch)
 		if err != nil {
 			return nil, err
 		}
@@ -78,10 +134,10 @@ func (service *converseService) AppendModelMessage(ctx *gin.Context, session *st
 	}
 	serial := *current + 1
 	// 保存会话消息。
-	batch := storage.RDB.CreateBatch()
-	batch.AppendCommand("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
-	batch.AppendCommand("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complete, moment)
-	err = storage.RDB.BatchNaught(ctx, batch)
+	var batch storage.Batch
+	batch.Append("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
+	batch.Append("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message_id, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complete, moment)
+	err = storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return err
 	}

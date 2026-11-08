@@ -17,8 +17,10 @@ type converseHandler struct {
 
 // register 注册路由分组。
 func (handler *converseHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Station.ContextPath + "/converse")
+	group := engine.Group(config.Cfg.Station.ContextPath + "/converse")
 	group.GET("/filterSession", server.TestLogin, handler.filterSession)
+	group.POST("/modifySession", server.TestLogin, handler.modifySession)
+	group.DELETE("/deleteSession", server.TestLogin, handler.deleteSession)
 	group.GET("/filterMessage", server.TestLogin, handler.filterMessage)
 	group.POST("/appendMessage", server.TestLogin, handler.appendMessage)
 }
@@ -27,6 +29,49 @@ func (handler *converseHandler) register(engine *gin.Engine) {
 func (handler *converseHandler) filterSession(ctx *gin.Context) {
 	// 调用服务方法。
 	result, err := service.Converse.FilterSession(ctx)
+	if err != nil {
+		server.Failure(ctx, server.Failure501, err.Error())
+		return
+	}
+	// 返回成功结果。
+	server.Success(ctx, result)
+}
+
+// modifySession 修改用户会话。
+//
+// param: ctx 上下文。
+func (handler *converseHandler) modifySession(ctx *gin.Context) {
+	// 获取输入参数。
+	id := handler.getString(ctx, "id")
+	title := handler.getString(ctx, "title")
+	// 验证输入参数。
+	if id == nil || title == nil {
+		server.Failure(ctx, server.Failure400, "请求参数错误。")
+		return
+	}
+	// 调用服务方法。
+	result, err := service.Converse.ModifySession(ctx, *id, *title)
+	if err != nil {
+		server.Failure(ctx, server.Failure501, err.Error())
+		return
+	}
+	// 返回成功结果。
+	server.Success(ctx, result)
+}
+
+// deleteSession 删除用户会话。
+//
+// param: ctx 上下文。
+func (handler *converseHandler) deleteSession(ctx *gin.Context) {
+	// 获取输入参数。
+	id := handler.getString(ctx, "id")
+	// 验证输入参数。
+	if id == nil {
+		server.Failure(ctx, server.Failure400, "请求参数错误。")
+		return
+	}
+	// 调用服务方法。
+	result, err := service.Converse.DeleteSession(ctx, *id)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return

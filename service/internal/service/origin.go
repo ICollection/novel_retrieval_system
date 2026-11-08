@@ -58,11 +58,11 @@ func (service *originService) Upload(ctx *gin.Context, file multipart.File, head
 		return nil, fmt.Errorf("保存文件失败，详细错误信息：%w", err)
 	}
 	// 事务保存数据。
-	batch := storage.RDB.CreateBatch()
-	batch.AppendCommand("insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7);", origin_id, name, kind, size, hash, claims.Subject, moment)
-	batch.AppendCommand("insert into novel(id,origin,title,character_count,chapter_count,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8)", novel_id, origin_id, name, 0, 0, claims.Subject, moment, moment)
-	batch.AppendCommand("insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
-	err = storage.RDB.BatchNaught(ctx, batch)
+	var batch storage.Batch
+	batch.Append("insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7);", origin_id, name, kind, size, hash, claims.Subject, moment)
+	batch.Append("insert into novel(id,origin,title,character_count,chapter_count,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8)", novel_id, origin_id, name, 0, 0, claims.Subject, moment, moment)
+	batch.Append("insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
+	err = storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return nil, err
 	}

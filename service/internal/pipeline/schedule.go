@@ -74,7 +74,7 @@ var (
 func request(parent context.Context, mission string) context.Context {
 	mutex.Lock()
 	defer mutex.Unlock()
-	if len(index) >= config.Config.Station.Concurrency {
+	if len(index) >= config.Cfg.Station.Concurrency {
 		return nil
 	}
 	if _, exists := index[mission]; exists == true {
@@ -147,10 +147,10 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 更新任务状态。
-		batch := storage.RDB.CreateBatch()
-		batch.AppendCommand("update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
-		batch.AppendCommand("update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
-		err = storage.RDB.BatchNaught(ctx, batch)
+		var batch storage.Batch
+		batch.Append("update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
+		batch.Append("update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
+		err = storage.RDB.BatchNaught(ctx, &batch)
 		if err != nil {
 			log.Println("更新任务状态失败，详细错误信息：", err.Error())
 			return

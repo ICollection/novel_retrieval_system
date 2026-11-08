@@ -16,7 +16,7 @@ type originHandler struct {
 
 // register 注册路由分组。
 func (handler *originHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Station.ContextPath + "/origin")
+	group := engine.Group(config.Cfg.Station.ContextPath + "/origin")
 	group.POST("/upload", server.TestPermit(common.PermissionManageOrigin), handler.upload)
 }
 

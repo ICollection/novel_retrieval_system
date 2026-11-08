@@ -2,11 +2,11 @@
 /**
  * 对话问答页面。
  *
- * 会话来自 POST /converse/filterSession，历史消息来自 POST /converse/filterMessage，
+ * 会话来自 GET /converse/filterSession，历史消息来自 GET /converse/filterMessage，
  * 提问通过 POST /converse/appendMessage 以流式响应（text/event-stream）返回。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { API_BASE_URL, request } from '../api'
 import { getSession } from '../auth'
 
@@ -207,7 +207,7 @@ function applyEvent(raw: string, reply: ChatMessage) {
     return
   }
   switch (payload.type) {
-    case 'thinking':
+    case 'think':
       reply.thinking += payload.content ?? ''
       scrollDown()
       break
@@ -259,14 +259,14 @@ async function send() {
   }
 
   messages.value.push({ id: ++sequence, role: 'user', content: text, thinking: '', time: clock() })
-  const reply: ChatMessage = {
+  const reply = reactive<ChatMessage>({
     id: ++sequence,
     role: 'assistant',
     content: '',
     thinking: '',
     time: clock(),
     pending: true
-  }
+  })
   messages.value.push(reply)
   input.value = ''
   sending.value = true
@@ -304,6 +304,73 @@ async function send() {
   }
 }
 
+/** 修改会话名称。 */
+async function renameSession(item: SessionItem) {
+  if (!item.id || sending.value) {
+    return
+  }
+  let title: string
+  try {
+    const result = await ElMessageBox.prompt('请输入新的会话名称', '重命名会话', {
+      inputValue: item.title ?? '',
+      inputValidator: (value) => (value && value.trim() !== '' ? true : '会话名称不能为空'),
+      confirmButtonText: '保存',
+      cancelButtonText: '取消'
+    })
+    title = result.value.trim()
+  } catch {
+    return
+  }
+  try {
+    const form = new FormData()
+    form.append('id', item.id)
+    form.append('title', title)
+    await request<string>('/converse/modifySession', { method: 'POST', token, body: form })
+    const target = sessions.value.find((session) => session.id === item.id)
+    if (target) {
+      target.title = title
+    }
+    ElMessage.success('会话名称已修改')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '修改会话失败')
+  }
+}
+
+/** 删除会话。 */
+async function deleteSession(item: SessionItem) {
+  if (!item.id || sending.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定删除会话「${item.title || '未命名会话'}」吗？会话中的消息会一并删除。`,
+      '删除会话',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+  try {
+    await request<string>('/converse/deleteSession', {
+      method: 'DELETE',
+      token,
+      query: { id: item.id }
+    })
+    if (currentSession.value === item.id) {
+      currentSession.value = null
+      messages.value = []
+    }
+    sessions.value = sessions.value.filter((session) => session.id !== item.id)
+    ElMessage.success('会话已删除')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '删除会话失败')
+  }
+}
+
 /** 使用推荐问题。 */
 function useSuggestion(text: string) {
   if (sending.value) {
@@ -330,121 +397,139 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="chat">
-    <header class="chat-head">
-      <div class="page-head">
-        <div>
-          <h1>对话问答</h1>
-          <p>{{ currentTitle }}</p>
+    <main class="chat-main">
+      <header class="chat-head">
+        <div class="page-head">
+          <div>
+            <h1>对话问答</h1>
+            <p>{{ currentTitle }}</p>
+          </div>
+          <el-button :disabled="sending" @click="newSession">新建会话</el-button>
         </div>
-        <el-button :disabled="sending" @click="newSession">新建会话</el-button>
+      </header>
+
+      <div ref="scrollEl" class="stream" v-loading="loadingMessages">
+        <div class="stream-inner">
+          <div v-if="showGuide" class="guide">
+            <p class="guide-title">试试这样问</p>
+            <div class="chips">
+              <button v-for="item in suggestions" :key="item" class="chip" @click="useSuggestion(item)">
+                {{ item }}
+              </button>
+            </div>
+          </div>
+
+          <div v-for="message in messages" :key="message.id" class="row" :class="message.role">
+            <div class="avatar">{{ message.role === 'user' ? '我' : 'AI' }}</div>
+            <div class="bubble-wrap">
+              <div class="meta">
+                {{ message.role === 'user' ? '你' : '阅读助手' }} · {{ message.time }}
+              </div>
+              <details v-if="message.thinking" class="thinking" open>
+                <summary>思考过程</summary>
+                <p>{{ message.thinking }}</p>
+              </details>
+              <div class="bubble">
+                <span v-if="message.pending && !message.content" class="typing">
+                  <i /><i /><i />
+                </span>
+                <template v-else>
+                  <p v-for="(para, index) in paragraphs(message.content)" :key="index">{{ para }}</p>
+                  <span v-if="message.pending" class="cursor" />
+                </template>
+              </div>
+              <p v-if="message.error" class="error-line">{{ message.error }}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="session-bar" v-loading="loadingSessions">
-        <button
-          v-for="item in sessions"
-          :key="item.id ?? item.title ?? ''"
-          type="button"
-          class="session-chip"
-          :class="{ 'is-active': item.id === currentSession }"
-          :disabled="sending || loadingMessages"
-          @click="item.id && openSession(item.id)"
-        >
-          {{ item.title || '未命名会话' }}
-        </button>
+      <footer class="composer">
+        <div class="composer-tools">
+          <span class="tools-label">小说范围</span>
+          <el-select
+            v-model="selectedNovels"
+            multiple
+            size="small"
+            placeholder="请选择小说范围"
+            :disabled="sending"
+            class="novel-select"
+          >
+            <el-option
+              v-for="item in novels"
+              :key="item.id"
+              :label="item.title || item.id"
+              :value="item.id"
+            />
+          </el-select>
+          <span v-if="novels.length === 0" class="tools-empty">暂无就绪小说</span>
+        </div>
+
+        <div class="composer-inner">
+          <el-input
+            v-model="input"
+            type="textarea"
+            resize="none"
+            :autosize="{ minRows: 1, maxRows: 5 }"
+            placeholder="输入你的问题，例如：主角的师父是谁？"
+            @keydown="onKeydown"
+          />
+          <el-button
+            type="primary"
+            class="send-btn"
+            :disabled="!input.trim() || sending || selectedNovels.length === 0"
+            :loading="sending"
+            @click="send"
+          >
+            发送
+          </el-button>
+        </div>
+        <p class="hint">Enter 发送，Shift + Enter 换行</p>
+      </footer>
+    </main>
+
+    <aside class="session-panel">
+      <p class="session-panel-title">历史会话</p>
+      <div class="session-list" v-loading="loadingSessions">
+        <div v-for="item in sessions" :key="item.id ?? item.title ?? ''" class="session-item">
+          <button
+            type="button"
+            class="session-chip"
+            :class="{ 'is-active': item.id === currentSession }"
+            :disabled="sending || loadingMessages"
+            @click="item.id && openSession(item.id)"
+          >
+            {{ item.title || '未命名会话' }}
+          </button>
+          <span v-if="item.id" class="session-actions">
+            <button type="button" class="session-action" :disabled="sending" @click.stop="renameSession(item)">
+              重命名
+            </button>
+            <button type="button" class="session-action" :disabled="sending" @click.stop="deleteSession(item)">
+              删除
+            </button>
+          </span>
+        </div>
         <span v-if="!loadingSessions && sessions.length === 0" class="session-empty">
           还没有历史会话
         </span>
       </div>
-    </header>
-
-    <div ref="scrollEl" class="stream" v-loading="loadingMessages">
-      <div class="stream-inner">
-        <div v-if="showGuide" class="guide">
-          <p class="guide-title">试试这样问</p>
-          <div class="chips">
-            <button v-for="item in suggestions" :key="item" class="chip" @click="useSuggestion(item)">
-              {{ item }}
-            </button>
-          </div>
-        </div>
-
-        <div v-for="message in messages" :key="message.id" class="row" :class="message.role">
-          <div class="avatar">{{ message.role === 'user' ? '我' : 'AI' }}</div>
-          <div class="bubble-wrap">
-            <div class="meta">
-              {{ message.role === 'user' ? '你' : '阅读助手' }} · {{ message.time }}
-            </div>
-            <details v-if="message.thinking" class="thinking">
-              <summary>思考过程</summary>
-              <p>{{ message.thinking }}</p>
-            </details>
-            <div class="bubble">
-              <span v-if="message.pending && !message.content" class="typing">
-                <i /><i /><i />
-              </span>
-              <template v-else>
-                <p v-for="(para, index) in paragraphs(message.content)" :key="index">{{ para }}</p>
-                <span v-if="message.pending" class="cursor" />
-              </template>
-            </div>
-            <p v-if="message.error" class="error-line">{{ message.error }}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <footer class="composer">
-      <div class="composer-tools">
-        <span class="tools-label">参考小说</span>
-        <el-select
-          v-model="selectedNovels"
-          multiple
-          collapse-tags
-          collapse-tags-tooltip
-          size="small"
-          placeholder="请选择小说"
-          :disabled="sending"
-          class="novel-select"
-        >
-          <el-option
-            v-for="item in novels"
-            :key="item.id"
-            :label="item.title || item.id"
-            :value="item.id"
-          />
-        </el-select>
-        <span v-if="novels.length === 0" class="tools-empty">暂无就绪小说</span>
-      </div>
-
-      <div class="composer-inner">
-        <el-input
-          v-model="input"
-          type="textarea"
-          resize="none"
-          :autosize="{ minRows: 1, maxRows: 5 }"
-          placeholder="输入你的问题，例如：主角的师父是谁？"
-          @keydown="onKeydown"
-        />
-        <el-button
-          type="primary"
-          class="send-btn"
-          :disabled="!input.trim() || sending || selectedNovels.length === 0"
-          :loading="sending"
-          @click="send"
-        >
-          发送
-        </el-button>
-      </div>
-      <p class="hint">Enter 发送，Shift + Enter 换行</p>
-    </footer>
+    </aside>
   </div>
 </template>
 
 <style scoped>
 .chat {
   display: flex;
-  flex-direction: column;
   height: 100%;
+  min-height: 0;
+}
+
+.chat-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -454,29 +539,78 @@ onBeforeUnmount(() => {
 }
 
 /* 会话列表 */
-.session-bar {
+.session-panel {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 0 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex: 0 0 232px;
+  flex-direction: column;
+  min-height: 0;
+  padding: 22px 16px 16px;
+  border-left: 1px solid var(--line);
+  background: var(--bg-page);
 }
 
-.session-bar::-webkit-scrollbar {
-  display: none;
+.session-panel-title {
+  margin: 0 0 12px;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.session-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.session-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.session-action {
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.session-action:hover:not(:disabled) {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.session-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .session-chip {
-  flex: 0 0 auto;
-  max-width: 220px;
-  padding: 7px 14px;
+  width: 100%;
+  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 10px;
   background: #fff;
   color: var(--text-sub);
   font-family: inherit;
   font-size: 12.5px;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -617,6 +751,8 @@ onBeforeUnmount(() => {
 
 .thinking p {
   margin: 8px 0 0;
+  max-height: 240px;
+  overflow-y: auto;
   white-space: pre-wrap;
 }
 
@@ -724,7 +860,20 @@ onBeforeUnmount(() => {
 }
 
 .novel-select {
-  width: 260px;
+  flex: 1;
+  min-width: 0;
+}
+
+.novel-select :deep(.el-select__wrapper) {
+  height: auto;
+  min-height: 24px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.novel-select :deep(.el-select__tags) {
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .tools-empty {

@@ -2,7 +2,6 @@ package response
 
 import (
 	"fmt"
-	"log"
 	"service/internal/service"
 	"service/internal/storage"
 	"strings"
@@ -25,34 +24,32 @@ func ComposeAnswer(ctx *gin.Context, session *string, content *string, novels []
 		return nil, err
 	}
 	// 召回相关切片。
+	var recalls []recall
 	if question == nil {
-		// 没有问题向量，沿用上一次回答召回的分片。
-		log.Printf("================")
-
+		recalls, err = getRecentSegment(ctx, *session)
 	} else {
-		// 获取召回切片。
-		segments, err := getRecallSegment(ctx, question, novels)
-		if err != nil {
-			return nil, err
-		}
-		// 获取用户提示词。
-		prompt, references, err := getFormalPrompt(ctx, *session, segments)
-		if err != nil {
-			return nil, err
-		}
-		// 开始回答问题。
-		answer, err := storage.LLM.AnswerStream(ctx, getFormalSystem(), *prompt, callback)
-		if err != nil {
-			service.Converse.AppendModelMessage(ctx, session, answer, novels, lo.Map(segments, func(item storage.RecallSegment, _ int) string { return item.Id }), false)
-			return nil, err
-		}
-		// 保存问题答案。
-		err = service.Converse.AppendModelMessage(ctx, session, answer, novels, lo.Map(segments, func(item storage.RecallSegment, _ int) string { return item.Id }), true)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Println(references)
+		recalls, err = getRecallSegment(ctx, question, novels)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// 获取用户提示词。
+	prompt, references, err := getFormalPrompt(ctx, *session, recalls)
+	if err != nil {
+		return nil, err
+	}
+	// 开始回答问题。
+	answer, err := storage.LLM.AnswerStream(ctx, getFormalSystem(), *prompt, callback)
+	if err != nil {
+		service.Converse.AppendModelMessage(ctx, session, answer, novels, lo.Map(recalls, func(item recall, _ int) string { return item.Id }), false)
+		return nil, err
+	}
+	// 保存问题答案。
+	err = service.Converse.AppendModelMessage(ctx, session, answer, novels, lo.Map(recalls, func(item recall, _ int) string { return item.Id }), true)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(references)
 	return session, nil
 }
 
@@ -78,7 +75,7 @@ func getQuestionVector(ctx *gin.Context, session string, content *string) ([]flo
 		return nil, nil
 	}
 	// 返回问题向量。
-	result, err := storage.VMD.ComputeVector(ctx, *recall)
+	result, err := storage.VEM.ComputeVector(ctx, *recall)
 	if err != nil {
 		return nil, err
 	}
@@ -163,12 +160,44 @@ func getRecallPrompt(ctx *gin.Context, session string) (*string, error) {
 // param: question 问题向量。
 // param: novels 小说范围。
 // return: 召回切片，错误信息。
-func getRecallSegment(ctx *gin.Context, question []float32, novels []string) ([]storage.RecallSegment, error) {
-	segments, err := storage.VDB.FilterPoints(ctx, question, novels, 20, 0.5)
+func getRecallSegment(ctx *gin.Context, question []float32, novels []string) ([]recall, error) {
+	points, err := storage.VDB.FilterPoints(ctx, question, novels, 20, 0.5)
 	if err != nil {
 		return nil, err
 	}
-	return segments, nil
+	recalls := make([]recall, 0, len(points))
+	for _, point := range points {
+		recalls = append(recalls, recall{
+			Id:      strings.ToUpper(point.Id.GetUuid()),
+			Score:   point.Score,
+			Novel:   point.Payload["novel"].GetStringValue(),
+			Chapter: point.Payload["chapter"].GetStringValue(),
+			Serial:  int32(point.Payload["serial"].GetIntegerValue()),
+		})
+	}
+	return recalls, nil
+}
+
+// getRecentSegment 获取上次切片。
+//
+// param: ctx 上下文。
+// param: session 会话编码。
+// return: 上次切片，错误信息。
+func getRecentSegment(ctx *gin.Context, session string) ([]recall, error) {
+	// 查询上次切片。
+	ids, err := storage.RDB.QuerySimple[string](ctx, "select segments from message where session=$1 and segments is not null order by serial desc limit 1;", session)
+	if err != nil {
+		return nil, nil
+	}
+	if ids == nil {
+		return []recall{}, nil
+	}
+	// 获取切片信息。
+	recalls, err := storage.RDB.QueryMatrix[recall](ctx, fmt.Sprintf("select id,novel,chapter,serial,0 as score from segment where id in ('%s');", strings.ReplaceAll(*ids, ",", "','")))
+	if err != nil {
+		return nil, err
+	}
+	return recalls, nil
 }
 
 // getFormalSystem 获取提问用系统提示词。
@@ -204,13 +233,13 @@ func getFormalSystem() string {
 }
 
 // getSupplyPrompt 获取提问用参考提示词。
-func getSupplyPrompt(ctx *gin.Context, segments []storage.RecallSegment) ([]string, []reference, error) {
+func getSupplyPrompt(ctx *gin.Context, recalls []recall) ([]string, []reference, error) {
 	result := []string{}
 	references := []reference{}
 	// 合并相关区片。
 	sections := sections{sections: []section{}}
-	for _, segment := range segments {
-		sections.append(segment.Novel, segment.Chapter, segment.Serial)
+	for _, recall := range recalls {
+		sections.append(recall.Novel, recall.Chapter, recall.Serial)
 	}
 	// 查询拼写提示。
 	for i, section := range sections.sections {
@@ -239,10 +268,10 @@ func getSupplyPrompt(ctx *gin.Context, segments []storage.RecallSegment) ([]stri
 }
 
 // getFormalPrompt 获取提问用用户提示词。
-func getFormalPrompt(ctx *gin.Context, session string, segments []storage.RecallSegment) (*string, []reference, error) {
+func getFormalPrompt(ctx *gin.Context, session string, recalls []recall) (*string, []reference, error) {
 	prompts := []string{}
 	// 获取参考提示词。
-	supply, reference, err := getSupplyPrompt(ctx, segments)
+	supply, reference, err := getSupplyPrompt(ctx, recalls)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -334,4 +363,13 @@ type reference struct {
 	NovelTitle   *string `json:"novel_title"`
 	ChapterId    *string `json:"chapter_id"`
 	ChapterTitle *string `json:"chapter_title"`
+}
+
+// recall 召回分片。
+type recall struct {
+	Id      string  `db:"id"`
+	Novel   string  `db:"novel"`
+	Chapter string  `db:"chapter"`
+	Serial  int32   `db:"serial"`
+	Score   float32 `db:"score"`
 }

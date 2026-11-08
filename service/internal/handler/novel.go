@@ -16,7 +16,7 @@ type novelHandler struct {
 
 // register 注册路由分组。
 func (handler *novelHandler) register(engine *gin.Engine) {
-	group := engine.Group(config.Config.Station.ContextPath + "/novel")
+	group := engine.Group(config.Cfg.Station.ContextPath + "/novel")
 	group.GET("/filter", server.TestLogin, handler.filter)
 	group.PATCH("/modify", server.TestPermit(common.PermissionManageOrigin), handler.modify)
 	group.DELETE("/delete", server.TestPermit(common.PermissionManageOrigin), handler.delete)

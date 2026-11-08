@@ -15,8 +15,8 @@ import (
 //go:embed config.yaml
 var content []byte
 
-// Config 全局配置。
-var Config *config
+// Cfg 全局配置。
+var Cfg *Config
 
 // init 初始化全局配置。
 func init() {
@@ -24,11 +24,11 @@ func init() {
 	if err != nil {
 		log.Fatal("解析系统配置失败，详细错误信息：", err)
 	}
-	Config = cfg
+	Cfg = cfg
 }
 
 // parse 解析配置文件。
-func parse() (*config, error) {
+func parse() (*Config, error) {
 	// 读取配置文件。
 	reader := viper.New()
 	reader.SetConfigType("yaml")
@@ -36,7 +36,7 @@ func parse() (*config, error) {
 		return nil, fmt.Errorf("读取配置文件失败，详细错误信息：%w", err)
 	}
 	// 解析配置文件。
-	cfg := &config{}
+	cfg := &Config{}
 	if err := reader.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败，详细错误信息：%w", err)
 	}

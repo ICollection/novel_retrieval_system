@@ -25,7 +25,7 @@ func main() {
 	pipeline.Initialize()
 	defer pipeline.Dispose()
 	// 设置运行模式。
-	switch config.Config.Station.Mode {
+	switch config.Cfg.Station.Mode {
 	case gin.ReleaseMode:
 		gin.SetMode(gin.ReleaseMode)
 		break
@@ -42,7 +42,7 @@ func main() {
 	// 注册服务方法。
 	handler.Register(engine)
 	// 启动网络服务。
-	address := fmt.Sprintf("0.0.0.0:%d", config.Config.Station.Port)
+	address := fmt.Sprintf("0.0.0.0:%d", config.Cfg.Station.Port)
 	log.Println("正在启动服务，服务监听地址：", address)
 	if err := engine.Run(address); err != nil {
 		log.Fatal("启动服务失败，详细错误信息：", err)

@@ -46,13 +46,13 @@ func (service *novelService) Delete(ctx *gin.Context, id *string) (*string, erro
 		return nil, err
 	}
 	// 删除关系数据。
-	batch := storage.RDB.CreateBatch()
-	batch.AppendCommand("delete from segment where novel=$1", novel.Id)
-	batch.AppendCommand("delete from chapter where novel=$1", novel.Id)
-	batch.AppendCommand("delete from mission where id=$1", novel.Mission)
-	batch.AppendCommand("delete from novel where id=$1", novel.Id)
-	batch.AppendCommand("delete from origin where id=$1", novel.Origin)
-	err = storage.RDB.BatchNaught(ctx, batch)
+	var batch storage.Batch
+	batch.Append("delete from segment where novel=$1", novel.Id)
+	batch.Append("delete from chapter where novel=$1", novel.Id)
+	batch.Append("delete from mission where id=$1", novel.Mission)
+	batch.Append("delete from novel where id=$1", novel.Id)
+	batch.Append("delete from origin where id=$1", novel.Origin)
+	err = storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return nil, err
 	}
