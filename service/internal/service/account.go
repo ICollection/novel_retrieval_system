@@ -132,6 +132,41 @@ func (as *accountService) VerifyAccount(ctx *gin.Context, login *string, passwor
 	return token, nil
 }
 
+// ConsumeAccount 统计用户词元。
+//
+// param: ctx 上下文。
+// param: id 用户编码。
+// return: 消费词元，错误信息。
+func (as *accountService) ConsumeAccount(ctx *gin.Context, id *string) (*consume, error) {
+	// 计算消费词元。
+	rows, err := storage.RDB.QueryMatrix[struct {
+		Model  *string `db:"model"`
+		Prompt *int32  `db:"prompt"`
+		Answer *int32  `db:"answer"`
+	}](ctx, "select model,sum(prompt) as prompt,sum(answer) as answer from consume where account=$1 group by model;", id)
+	if err != nil {
+		return nil, err
+	}
+	var llmPrompt, llmAnswer, slmPrompt, slmAnswer, vemPrompt int32
+	for _, row := range rows {
+		switch *row.Model {
+		case "LLM":
+			llmPrompt = *row.Prompt
+			llmAnswer = *row.Answer
+			break
+		case "SLM":
+			slmPrompt = *row.Prompt
+			slmAnswer = *row.Answer
+			break
+		case "VEM":
+			vemPrompt = *row.Prompt
+			break
+		}
+	}
+	// 返回消费词元。
+	return &consume{LlmPrompt: llmPrompt, LlmAnswer: llmAnswer, SlmPrompt: slmPrompt, SlmAnswer: slmAnswer, VemPrompt: vemPrompt}, nil
+}
+
 // account 系统用户。
 type account struct {
 	// ID 用户编码。

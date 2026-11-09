@@ -25,6 +25,7 @@ func (ac *accountHandler) register(engine *gin.Engine) {
 	group.PATCH("/changeAccount", server.TestPermit(common.PermissionManageUser), ac.changeAccount)
 	group.DELETE("/deleteAccount", server.TestPermit(common.PermissionManageUser), ac.deleteAccount)
 	group.GET("/verifyAccount", ac.verifyAccount)
+	group.GET("/consumeAccount", server.TestPermit(common.PermissionManageUser), ac.consumeAccount)
 }
 
 // filterAccount 查询系统用户。
@@ -145,6 +146,27 @@ func (ac *accountHandler) verifyAccount(ctx *gin.Context) {
 	}
 	// 调用服务方法。
 	result, err := service.Account.VerifyAccount(ctx, login, password)
+	if err != nil {
+		server.Failure(ctx, server.Failure501, err.Error())
+		return
+	}
+	// 返回成功结果。
+	server.Success(ctx, *result)
+}
+
+// consumeAccount 统计用户词元。
+//
+// param: ctx 上下文。
+func (ac *accountHandler) consumeAccount(ctx *gin.Context) {
+	// 获取输入参数。
+	id := ac.getString(ctx, "id")
+	// 验证输入参数。
+	if id == nil {
+		server.Failure(ctx, server.Failure400, "请求参数错误。")
+		return
+	}
+	// 调用服务方法。
+	result, err := service.Account.ConsumeAccount(ctx, id)
 	if err != nil {
 		server.Failure(ctx, server.Failure501, err.Error())
 		return

@@ -21,6 +21,8 @@ func (dh *discussHandler) register(engine *gin.Engine) {
 	group.POST("/modifySession", server.TestLogin, dh.modifySession)
 	group.DELETE("/deleteSession", server.TestLogin, dh.deleteSession)
 	group.GET("/filterMessage", server.TestLogin, dh.filterMessage)
+	group.GET("/filterNovels", server.TestLogin, dh.filterNovels)
+	group.GET("/consumeMission", server.TestLogin, dh.consumeMission)
 	group.POST("/appendMessage", server.TestLogin, dh.appendMessage)
 }
 
@@ -101,7 +103,49 @@ func (dh *discussHandler) filterMessage(ctx *gin.Context) {
 	server.Success(ctx, result)
 }
 
-// appendMessage 添加对话消息
+// filterNovels 查询会话小说。
+//
+// param: ctx 上下文。
+func (dh *discussHandler) filterNovels(ctx *gin.Context) {
+	// 获取输入参数。
+	id := dh.getString(ctx, "id")
+	// 验证输入参数。
+	if id == nil {
+		server.Failure(ctx, server.Failure400, "请求参数错误。")
+		return
+	}
+	// 调用服务方法。
+	result, err := service.Discuss.FilterNovels(ctx, id)
+	if err != nil {
+		server.Failure(ctx, server.Failure501, err.Error())
+		return
+	}
+	// 返回成功结果。
+	server.Success(ctx, result)
+}
+
+// consumeMission 统计会话词元。
+//
+// param: ctx 上下文。
+func (dh *discussHandler) consumeMission(ctx *gin.Context) {
+	// 获取输入参数。
+	id := dh.getString(ctx, "id")
+	// 验证输入参数。
+	if id == nil {
+		server.Failure(ctx, server.Failure400, "请求参数错误。")
+		return
+	}
+	// 调用服务方法。
+	result, err := service.Discuss.ConsumeMission(ctx, id)
+	if err != nil {
+		server.Failure(ctx, server.Failure501, err.Error())
+		return
+	}
+	// 返回成功结果。
+	server.Success(ctx, result)
+}
+
+// appendMessage 添加对话消息。
 //
 // param: ctx 上下文。
 func (dh *discussHandler) appendMessage(ctx *gin.Context) {

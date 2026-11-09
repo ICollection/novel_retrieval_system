@@ -61,8 +61,8 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 	}
 	prompts = append(prompts, prompt2...)
 	answer, llmPrompt, llmAnswer, err := storage.LLM.AnswerStream(ctx, config.Normal, strings.Join(prompts, "\n"), callback)
-	consume.llmPrompt = llmPrompt
-	consume.llmAnswer = llmAnswer
+	consume.LlmPrompt = llmPrompt
+	consume.LlmAnswer = llmAnswer
 	for _, reference := range references {
 		callback("refer", reference)
 	}
@@ -76,9 +76,18 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 		return nil, err
 	}
 	// 压缩早期问题。
-	err = cs.compressEarlyMessage(ctx, *session)
+	length, err := storage.RDB.QuerySimple[int32](ctx, "select sum(length(content)) from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
 	if err != nil {
 		return nil, err
+	}
+	if length != nil && *length >= 4096 {
+		callback("compress", "start")
+		err = cs.compressEarlyMessage(ctx, *session)
+		if err != nil {
+			callback("compress", "failure")
+		} else {
+			callback("compress", "success")
+		}
 	}
 	// 返回会话编码。
 	return session, nil
@@ -156,9 +165,9 @@ func (cs *composeService) makeupQueryQuestion(ctx *gin.Context, session string, 
 		return nil, err
 	}
 	// 小模型整理问题。
-	question, slmPrompt, slmAnswer, err := storage.SLM.AnswerDirect(ctx, config.Recall, strings.Join(prompt, "\n"))
-	consume.slmPrompt = slmPrompt
-	consume.slmAnswer = slmAnswer
+	question, slmPrompt, slmAnswer, err := storage.SLM.AnswerDirect(ctx, config.Recall, strings.Join(prompt, "\n"), 4096)
+	consume.SlmPrompt = slmPrompt
+	consume.SlmAnswer = slmAnswer
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +177,7 @@ func (cs *composeService) makeupQueryQuestion(ctx *gin.Context, session string, 
 	}
 	// 返回问题向量。
 	result, vemPrompt, err := storage.VEM.ComputeVector(ctx, *question)
-	consume.vemPrompt = vemPrompt
+	consume.VemPrompt = vemPrompt
 	if err != nil {
 		return nil, err
 	}
@@ -206,10 +215,12 @@ func (cs *composeService) makeupSessionPrompt(ctx *gin.Context, id string) ([]st
 		result = append(result, "======== 以下为历史对话 ========")
 	}
 	for _, message := range messages {
-		if *message.Human {
-			result = append(result, "用户提问："+*message.Content)
-		} else {
-			result = append(result, "助手回答："+*message.Content)
+		if message.Content != nil {
+			if *message.Human {
+				result = append(result, "用户提问："+*message.Content)
+			} else {
+				result = append(result, "助手回答："+*message.Content)
+			}
 		}
 	}
 	// 加入当前问题。
@@ -332,11 +343,11 @@ func (cs *composeService) appendModelMessage(ctx *gin.Context, session string, c
 	var batch storage.Batch
 	batch.Append("update session set current=$1,update_time=$2 where id=$3;", serial, moment, session)
 	batch.Append("insert into message(id,session,serial,human,content,novels,segments,complete,create_time) values($1,$2,$3,$4,$5,$6,$7,$8,$9);", message, session, serial, false, content, strings.Join(novels, ","), common.Trim(strings.Join(segments, ",")), complete, moment)
-	batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "SLM", consume.slmPrompt, consume.slmAnswer)
-	if consume.vemPrompt > 0 {
-		batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "VEM", consume.vemPrompt, 0)
+	batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "SLM", consume.SlmPrompt, consume.SlmAnswer)
+	if consume.VemPrompt > 0 {
+		batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "VEM", consume.VemPrompt, 0)
 	}
-	batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "LLM", consume.llmPrompt, consume.llmAnswer)
+	batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, message, "LLM", consume.LlmPrompt, consume.LlmAnswer)
 	err = storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return err
@@ -351,14 +362,6 @@ func (cs *composeService) appendModelMessage(ctx *gin.Context, session string, c
 // return: 错误消息。
 func (cs *composeService) compressEarlyMessage(ctx *gin.Context, session string) error {
 	claims := ctx.MustGet("claims").(*server.Claims)
-	// 验证是否需要压缩。
-	length, err := storage.RDB.QuerySimple[int32](ctx, "select sum(length(content)) from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
-	if err != nil {
-		return err
-	}
-	if length == nil || *length < 4096 {
-		return nil
-	}
 	prompts := []string{}
 	// 加入历史摘要。
 	summary, err := storage.RDB.QuerySimple[string](ctx, "select summary from session where id=$1", session)
@@ -370,21 +373,23 @@ func (cs *composeService) compressEarlyMessage(ctx *gin.Context, session string)
 		prompts = append(prompts, "历史摘要："+*summary)
 	}
 	// 提取问答记录。
-	messages, err := storage.RDB.QueryMatrix[message](ctx, "select message.id,message.title,message.summary,message.contain,message.current,message.create_user,message.create_time,message.update_time from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
+	messages, err := storage.RDB.QueryMatrix[message](ctx, "select message.id,message.session,message.serial,message.human,message.content,message.novels,message.segments,message.complete,message.create_time from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
 	if err != nil {
 		return err
 	}
 	prompts = append(prompts, "======== 以下为历史对话 ========")
 	for _, message := range messages {
-		if *message.Human {
-			prompts = append(prompts, "用户提问："+*message.Content)
-		} else {
-			prompts = append(prompts, "助手回答："+*message.Content)
+		if message.Content != nil {
+			if *message.Human {
+				prompts = append(prompts, "用户提问："+*message.Content)
+			} else {
+				prompts = append(prompts, "助手回答："+*message.Content)
+			}
 		}
 	}
 	// 压缩问答记录。
-	summary, llmPrompt, llmAnswer, err := storage.LLM.AnswerDirect(ctx, config.Compress, strings.Join(prompts, "\n"))
-	if err != nil {
+	summary, llmPrompt, llmAnswer, err := storage.SLM.AnswerDirect(ctx, config.Compress, strings.Join(prompts, "\n"), 8192)
+	if err != nil || summary == nil || len(*summary) == 0 {
 		return err
 	}
 	var batch storage.Batch
@@ -400,15 +405,15 @@ func (cs *composeService) compressEarlyMessage(ctx *gin.Context, session string)
 // 消费词元。
 type consume struct {
 	// llmPrompt 大语言模型输入数。
-	llmPrompt int32
+	LlmPrompt int32 `json:"llm_prompt"`
 	// llmAnswer 大语言模型输出数。
-	llmAnswer int32
+	LlmAnswer int32 `json:"llm_answer"`
 	// slmPrompt 小语言模型输入数。
-	slmPrompt int32
+	SlmPrompt int32 `json:"slm_prompt"`
 	// slmAnswer 小语言模型输出数。
-	slmAnswer int32
+	SlmAnswer int32 `json:"slm_answer"`
 	// vemPrompt 向量模型输入数。
-	vemPrompt int32
+	VemPrompt int32 `json:"vem_prompt"`
 }
 
 // recall 召回切片。

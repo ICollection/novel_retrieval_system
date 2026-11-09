@@ -69,8 +69,9 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 // param: ctx 上下文。
 // param: system 系统提示词。
 // param: prompt 用户提示词。
+// param: tokens 次元限制。
 // return: 答案文本，输入词元，输出词元，错误信息。
-func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string) (*string, int32, int32, error) {
+func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string, tokens int32) (*string, int32, int32, error) {
 	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)
 	// 设置请求超时。
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
@@ -83,14 +84,14 @@ func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt s
 			openai.UserMessage(prompt),
 		},
 		Temperature: openai.Float(0),
-		MaxTokens:   openai.Int(1024),
+		MaxTokens:   openai.Int(int64(tokens)),
 	}, option.WithJSONSet("chat_template_kwargs", map[string]any{"enable_thinking": false}))
 	if err != nil {
 		slog.Error(mc.sign+"生成回答失败", "error", err)
 		return nil, 0, 0, err
 	}
 	if len(response.Choices) == 0 {
-		err := errors.New("SLM没有返回结果。")
+		err := errors.New("没有返回结果。")
 		slog.Error(mc.sign+"生成回答失败", "error", err)
 		return nil, int32(response.Usage.PromptTokens), int32(response.Usage.CompletionTokens), err
 	}

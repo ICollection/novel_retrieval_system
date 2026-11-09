@@ -4,6 +4,7 @@ import (
 	"errors"
 	"service/internal/server"
 	"service/internal/storage"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -86,10 +87,14 @@ func (ds *discussService) DeleteSession(ctx *gin.Context, id string) (*string, e
 // param: recent 近期数量。
 // return: 会话消息，错误信息。
 func (ds *discussService) FilterMessage(ctx *gin.Context, id *string, recent int32) ([]message, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
 	// 获取会话记录。
 	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
 	if err != nil {
 		return nil, err
+	}
+	if session == nil || *session.CreateUser != claims.Subject {
+		return nil, errors.New("会话不存在或不属于用户。")
 	}
 	// 获取最近会话。
 	messages, err := storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<=$2 and serial>$3 order by serial;", session.ID, session.Current, *session.Current-recent)
@@ -97,6 +102,74 @@ func (ds *discussService) FilterMessage(ctx *gin.Context, id *string, recent int
 		return nil, err
 	}
 	return messages, nil
+}
+
+// FilterNovels 查询会话小说。
+//
+// param: ctx 上下文。
+// param: id 会话编码。
+// return: 小说编码，错误信息。
+func (ds *discussService) FilterNovels(ctx *gin.Context, id *string) ([]string, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	// 获取会话记录。
+	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil || *session.CreateUser != claims.Subject {
+		return nil, errors.New("会话不存在或不属于用户。")
+	}
+	// 查询会话小说。
+	novels, err := storage.RDB.QuerySimple[string](ctx, "select novels from message where novels is not null and session=$1 order by serial desc limit 1;", session.ID)
+	if err != nil {
+		return nil, err
+	}
+	// 返回会话小说。
+	return strings.Split(*novels, ","), nil
+}
+
+// ConsumeMission 统计会话词元。
+//
+// param: ctx 上下文。
+// param: id 会话编码。
+// return: 消费词元，错误信息。
+func (ds *discussService) ConsumeMission(ctx *gin.Context, id *string) (*consume, error) {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	// 获取会话记录。
+	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil || *session.CreateUser != claims.Subject {
+		return nil, errors.New("会话不存在或不属于用户。")
+	}
+	// 计算消费词元。
+	rows, err := storage.RDB.QueryMatrix[struct {
+		Model  *string `db:"model"`
+		Prompt *int32  `db:"prompt"`
+		Answer *int32  `db:"answer"`
+	}](ctx, "select model,sum(prompt) as prompt,sum(answer) as answer from consume where session=$1 group by model;", session.ID)
+	if err != nil {
+		return nil, err
+	}
+	var llmPrompt, llmAnswer, slmPrompt, slmAnswer, vemPrompt int32
+	for _, row := range rows {
+		switch *row.Model {
+		case "LLM":
+			llmPrompt = *row.Prompt
+			llmAnswer = *row.Answer
+			break
+		case "SLM":
+			slmPrompt = *row.Prompt
+			slmAnswer = *row.Answer
+			break
+		case "VEM":
+			vemPrompt = *row.Prompt
+			break
+		}
+	}
+	// 返回消费词元。
+	return &consume{LlmPrompt: llmPrompt, LlmAnswer: llmAnswer, SlmPrompt: slmPrompt, SlmAnswer: slmAnswer, VemPrompt: vemPrompt}, nil
 }
 
 // session 用户会话。
@@ -108,7 +181,7 @@ type session struct {
 	// Summary 前情摘要。
 	Summary *string `db:"summary" json:"summary"`
 	// Contain 截至序号。
-	Contain *string `db:"contain" json:"contain"`
+	Contain *int32 `db:"contain" json:"contain"`
 	// Current 当前序号。
 	Current *int32 `db:"current" json:"current"`
 	// CreateUser 创建用户。

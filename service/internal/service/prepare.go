@@ -65,7 +65,7 @@ func (ps *prepareService) UploadOrigin(ctx *gin.Context, file multipart.File, he
 	var batch storage.Batch
 	batch.Append("insert into origin(id,name,type,size,hash,create_user,create_time) values($1,$2,$3,$4,$5,$6,$7);", origin_id, name, kind, size, hash, claims.Subject, moment)
 	batch.Append("insert into novel(id,origin,title,character_count,chapter_count,create_user,create_time,update_time) values($1,$2,$3,$4,$5,$6,$7,$8);", novel_id, origin_id, name, 0, 0, claims.Subject, moment, moment)
-	batch.Append("insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10;", mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
+	batch.Append("insert into mission(id,novel,status,total_count,embed_count,launch_time,finish_time,update_time,retry_count,message) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10);", mission_id, novel_id, "01", 0, 0, nil, nil, moment, 0, nil)
 	err = storage.RDB.BatchNaught(ctx, &batch)
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (ps *prepareService) FilterNovel(ctx *gin.Context) ([]novel, error) {
 func (ps *prepareService) ModifyNovel(ctx *gin.Context, id *string, title *string) (*string, error) {
 	claims := ctx.MustGet("claims").(*server.Claims)
 	// 验证小说状态。
-	novel, err := storage.RDB.QuerySingle[novel](ctx, "select novel.id,novel.origin,origin.type,novel.title,mission.id as mission,mission.status,novel.character_count,novel.chapter_count,account.id as create_code,account.name as create_name,novel.create_time,novel.update_time from novel inner join origin on origin.id=novel.origin inner join account on account.id=novel.create_user inner join mission on mission.novel=novel.id where id=$1;", id)
+	novel, err := storage.RDB.QuerySingle[novel](ctx, "select novel.id,novel.origin,origin.type,novel.title,mission.id as mission,mission.status,novel.character_count,novel.chapter_count,account.id as create_code,account.name as create_name,novel.create_time,novel.update_time from novel inner join origin on origin.id=novel.origin inner join account on account.id=novel.create_user inner join mission on mission.novel=novel.id where novel.id=$1;", id)
 	if err != nil {
 		return nil, err
 	}

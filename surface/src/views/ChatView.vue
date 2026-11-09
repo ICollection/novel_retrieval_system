@@ -61,6 +61,8 @@ interface ChatMessage {
   thinking: string
   time: string
   references?: Reference[]
+  /** 历史消息压缩状态：开始、成功、失败。 */
+  compress?: 'start' | 'success' | 'failure'
   pending?: boolean
   error?: string
 }
@@ -69,6 +71,15 @@ interface ChatMessage {
 interface StreamEvent {
   type?: string
   content?: string | Reference
+}
+
+/** 词元消费，字段与后端 service/compose_service.go 中的 consume 结构一致。 */
+interface Consume {
+  llm_prompt?: number
+  llm_answer?: number
+  slm_prompt?: number
+  slm_answer?: number
+  vem_prompt?: number
 }
 
 const token = getSession()?.token ?? ''
@@ -122,6 +133,53 @@ function formatTime(value?: string | null): string {
   }
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())} ${pad(target.getHours())}:${pad(target.getMinutes())}`
+}
+
+/** 把数字格式化为带千分号的文本。 */
+function thousands(value: number): string {
+  return value.toLocaleString('zh-CN')
+}
+
+/** 把词元消费整理成提示内容。 */
+function consumeHtml(data?: Consume | null): string {
+  const llmPrompt = data?.llm_prompt ?? 0
+  const llmAnswer = data?.llm_answer ?? 0
+  const slmPrompt = data?.slm_prompt ?? 0
+  const slmAnswer = data?.slm_answer ?? 0
+  const vemPrompt = data?.vem_prompt ?? 0
+  const total = llmPrompt + llmAnswer + slmPrompt + slmAnswer + vemPrompt
+  return `<table style="width: 100%; border-collapse: collapse; line-height: 1.9">
+    <thead>
+      <tr style="color: #909399; font-size: 12px">
+        <th style="text-align: left; font-weight: 400">模型</th>
+        <th style="text-align: right; font-weight: 400">输入</th>
+        <th style="text-align: right; font-weight: 400">输出</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>大语言模型</td>
+        <td style="text-align: right">${thousands(llmPrompt)}</td>
+        <td style="text-align: right">${thousands(llmAnswer)}</td>
+      </tr>
+      <tr>
+        <td>小语言模型</td>
+        <td style="text-align: right">${thousands(slmPrompt)}</td>
+        <td style="text-align: right">${thousands(slmAnswer)}</td>
+      </tr>
+      <tr>
+        <td>向量模型</td>
+        <td style="text-align: right">${thousands(vemPrompt)}</td>
+        <td style="text-align: right">0</td>
+      </tr>
+      <tr style="border-top: 1px solid #ebeef5">
+        <td style="padding-top: 8px">合计</td>
+        <td colspan="2" style="padding-top: 8px; text-align: right; font-weight: 600">
+          ${thousands(total)}
+        </td>
+      </tr>
+    </tbody>
+  </table>`
 }
 
 /** 按空行拆分段落。 */
@@ -189,9 +247,15 @@ async function openSession(id: string) {
       thinking: '',
       time: formatTime(item.create_time) || clock()
     }))
+    // 恢复该会话使用的小说。
+    const chosen = await request<string[] | null>('/discuss/filterNovels', {
+      token,
+      query: { id }
+    })
+    selectedNovels.value = (Array.isArray(chosen) ? chosen : []).filter((item) => item)
     scrollDown()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '加载会话消息失败')
+    ElMessage.error(error instanceof Error ? error.message : '加载会话失败')
   } finally {
     loadingMessages.value = false
   }
@@ -204,6 +268,38 @@ function newSession() {
   }
   currentSession.value = null
   messages.value = []
+}
+
+/** 统计当前会话的词元消费。 */
+async function showConsume() {
+  if (!currentSession.value) {
+    return
+  }
+  try {
+    const content = await request<Consume | null>('/discuss/consumeMission', {
+      token,
+      query: { id: currentSession.value }
+    })
+    ElMessageBox.alert(consumeHtml(content), '次元统计', {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '知道了',
+      customClass: 'consume-message-box'
+    }).catch(() => {})
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '统计失败')
+  }
+}
+
+/** 压缩状态文案。 */
+const compressTexts: Record<string, string> = {
+  start: '正在压缩历史消息…',
+  success: '历史消息压缩完成',
+  failure: '历史消息压缩失败'
+}
+
+/** 获取压缩状态文案。 */
+function compressText(state?: string): string {
+  return state ? compressTexts[state] ?? '' : ''
 }
 
 /** 处理一个流式事件。 */
@@ -230,6 +326,17 @@ function applyEvent(raw: string, reply: ChatMessage) {
     case 'refer':
       reply.references?.push(payload.content as Reference)
       scrollDown()
+      break
+    case 'compress':
+      if (
+        typeof payload.content === 'string' &&
+        (payload.content === 'start' ||
+          payload.content === 'success' ||
+          payload.content === 'failure')
+      ) {
+        reply.compress = payload.content
+        scrollDown()
+      }
       break
     case 'finish':
       if (typeof payload.content === 'string' && payload.content) {
@@ -422,7 +529,10 @@ onBeforeUnmount(() => {
             <h1>对话问答</h1>
             <p>{{ currentTitle }}</p>
           </div>
-          <el-button :disabled="sending" @click="newSession">新建会话</el-button>
+          <div class="head-actions">
+            <el-button :disabled="sending || !currentSession" @click="showConsume">次元统计</el-button>
+            <el-button :disabled="sending" @click="newSession">新建会话</el-button>
+          </div>
         </div>
       </header>
 
@@ -469,6 +579,14 @@ onBeforeUnmount(() => {
                   >下载</a>
                 </p>
               </details>
+              <p
+                v-if="message.compress && (message.compress !== 'start' || message.pending)"
+                class="compress-line"
+                :class="message.compress"
+              >
+                <i v-if="message.compress === 'start'" class="compress-dot" />
+                {{ compressText(message.compress) }}
+              </p>
               <p v-if="message.error" class="error-line">{{ message.error }}</p>
             </div>
           </div>
@@ -567,6 +685,12 @@ onBeforeUnmount(() => {
 .chat-head {
   padding: 22px 32px 0;
   background: var(--bg-page);
+}
+
+.head-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
 }
 
 /* 会话列表 */
@@ -860,6 +984,32 @@ onBeforeUnmount(() => {
 
 .reference-download:hover {
   text-decoration: underline;
+}
+
+/* 历史压缩提示 */
+.compress-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.compress-line.success {
+  color: var(--el-color-success);
+}
+
+.compress-line.failure {
+  color: var(--el-color-danger);
+}
+
+.compress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: blink 1s infinite;
 }
 
 /* 打字指示 */

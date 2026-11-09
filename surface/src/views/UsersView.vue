@@ -12,6 +12,15 @@ interface Account {
   permission?: string
 }
 
+/** 词元消费，字段与后端 service/compose_service.go 中的 consume 结构一致。 */
+interface Consume {
+  llm_prompt?: number
+  llm_answer?: number
+  slm_prompt?: number
+  slm_answer?: number
+  vem_prompt?: number
+}
+
 const session = getSession()
 const token = session?.token ?? ''
 /** 没有管理用户权限时，增删改按钮全部禁用。 */
@@ -50,6 +59,53 @@ const passwordRules: FormRules<typeof passwordForm> = {
 /** 取出错误提示。 */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败'
+}
+
+/** 把数字格式化为带千分号的文本。 */
+function thousands(value: number): string {
+  return value.toLocaleString('zh-CN')
+}
+
+/** 把词元消费整理成提示内容。 */
+function consumeHtml(data?: Consume | null): string {
+  const llmPrompt = data?.llm_prompt ?? 0
+  const llmAnswer = data?.llm_answer ?? 0
+  const slmPrompt = data?.slm_prompt ?? 0
+  const slmAnswer = data?.slm_answer ?? 0
+  const vemPrompt = data?.vem_prompt ?? 0
+  const total = llmPrompt + llmAnswer + slmPrompt + slmAnswer + vemPrompt
+  return `<table style="width: 100%; border-collapse: collapse; line-height: 1.9">
+    <thead>
+      <tr style="color: #909399; font-size: 12px">
+        <th style="text-align: left; font-weight: 400">模型</th>
+        <th style="text-align: right; font-weight: 400">输入</th>
+        <th style="text-align: right; font-weight: 400">输出</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>大语言模型</td>
+        <td style="text-align: right">${thousands(llmPrompt)}</td>
+        <td style="text-align: right">${thousands(llmAnswer)}</td>
+      </tr>
+      <tr>
+        <td>小语言模型</td>
+        <td style="text-align: right">${thousands(slmPrompt)}</td>
+        <td style="text-align: right">${thousands(slmAnswer)}</td>
+      </tr>
+      <tr>
+        <td>向量模型</td>
+        <td style="text-align: right">${thousands(vemPrompt)}</td>
+        <td style="text-align: right">0</td>
+      </tr>
+      <tr style="border-top: 1px solid #ebeef5">
+        <td style="padding-top: 8px">合计</td>
+        <td colspan="2" style="padding-top: 8px; text-align: right; font-weight: 600">
+          ${thousands(total)}
+        </td>
+      </tr>
+    </tbody>
+  </table>`
 }
 
 /** 枚举中存在的权限值。 */
@@ -214,6 +270,23 @@ async function remove(row: Account) {
   }
 }
 
+/** 统计用户的词元消费。 */
+async function showConsume(row: Account) {
+  try {
+    const content = await request<Consume | null>('/account/consumeAccount', {
+      token,
+      query: { id: row.id }
+    })
+    ElMessageBox.alert(consumeHtml(content), `次元统计 · ${row.name}`, {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '知道了',
+      customClass: 'consume-message-box'
+    }).catch(() => {})
+  } catch (error) {
+    ElMessage.error(messageOf(error))
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -251,8 +324,11 @@ onMounted(load)
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="210" align="right">
+        <el-table-column label="操作" width="290" align="right">
           <template #default="{ row }">
+            <el-button link type="primary" :disabled="!canManage" @click="showConsume(row)">
+              次元统计
+            </el-button>
             <el-button link type="primary" :disabled="!canManage" @click="openEdit(row)">修改</el-button>
             <el-button link type="primary" :disabled="!canManage" @click="openPassword(row)">
               改密
