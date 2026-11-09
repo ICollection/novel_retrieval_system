@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 	"service/internal/config"
 	"service/internal/handler"
 	"service/internal/pipeline"
@@ -14,6 +16,7 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	// 初始化存储层。
 	storage.Initialize()
 	defer storage.Dispose()

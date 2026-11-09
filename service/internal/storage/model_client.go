@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"log/slog"
+	"service/internal/common"
 	"service/internal/config"
 	"strings"
 	"time"
@@ -59,6 +60,7 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 	for i, x := range response.Data[0].Embedding {
 		result[i] = float32(x)
 	}
+	slog.Info(mc.sign+"模型完成向量", "tokens", response.Usage.PromptTokens)
 	return result, nil
 }
 
@@ -69,6 +71,7 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 // param: prompt 用户提示词。
 // return: 答案文本，错误信息。
 func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string) (*string, error) {
+	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)
 	// 设置请求超时。
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
 	defer cancel()
@@ -92,8 +95,9 @@ func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt s
 		return nil, err
 	}
 	// 返回最终答案。
-	result := strings.TrimSpace(response.Choices[0].Message.Content)
-	return &result, nil
+	slog.Info(mc.sign+"模型完成回答", "token1", response.Usage.PromptTokens, "token2", response.Usage.CompletionTokens, "answer", response.Choices[0].Message.Content)
+	result := common.Trim(response.Choices[0].Message.Content)
+	return result, nil
 }
 
 // AnswerStream 流式回答问题。
@@ -104,6 +108,7 @@ func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt s
 // param: callback 回调函数。
 // return: 答案文本，错误信息。
 func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt string, callback func(kind string, content string) error) (*string, error) {
+	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)
 	// 设置请求超时。
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
 	defer cancel()
@@ -115,13 +120,20 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 			openai.UserMessage(prompt),
 		},
 		Temperature: openai.Float(0.7),
-		MaxTokens:   openai.Int(4096),
+		MaxTokens:   openai.Int(131072),
+		StreamOptions: openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: openai.Bool(true),
+		},
 	})
 	defer stream.Close()
 	// 累积最终答案。
 	var answer strings.Builder
+	var usage openai.CompletionUsage
 	for stream.Next() {
 		current := stream.Current()
+		if current.Usage.TotalTokens > 0 {
+			usage = current.Usage
+		}
 		if len(current.Choices) == 0 {
 			continue
 		}
@@ -129,9 +141,9 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 		if thinking := getThinking(delta); thinking != nil {
 			if err := callback("think", *thinking); err != nil {
 				// 思考过程中用户断开。
-				slog.Error(mc.sign+"用户中断思考", "error", err)
-				result := answer.String()
-				return &result, err
+				slog.Error(mc.sign+"用户中断思考", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
+				result := common.Trim(answer.String())
+				return result, err
 			}
 		}
 		// 答案内容。
@@ -139,22 +151,23 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 			answer.WriteString(delta.Content)
 			if err := callback("answer", delta.Content); err != nil {
 				// 回答过程中用户断开。
-				slog.Error(mc.sign+"用户中断回答", "error", err)
-				result := answer.String()
-				return &result, err
+				slog.Error(mc.sign+"用户中断回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
+				result := common.Trim(answer.String())
+				return result, err
 			}
 		}
 	}
 	// 检查流式错误。
 	if err := stream.Err(); err != nil {
 		// 模型或网络中断。
-		result := answer.String()
-		slog.Error(mc.sign+"模型中断回答", "error", err)
-		return &result, err
+		slog.Error(mc.sign+"模型中断回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
+		result := common.Trim(answer.String())
+		return result, err
 	}
 	// 返回正常结果。
-	result := answer.String()
-	return &result, nil
+	slog.Info(mc.sign+"模型完成回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "answer", answer.String())
+	result := common.Trim(answer.String())
+	return result, nil
 }
 
 // getThinking 获取思考内容。
