@@ -27,8 +27,8 @@ func CreateAnswerWriter(ctx *gin.Context) *AnswerWriter {
 }
 
 // Process 写入一个片段。
-func (writer *AnswerWriter) Process(kind string, content string) error {
-	data, err := json.Marshal(map[string]string{"type": kind, "content": content})
+func (writer *AnswerWriter) Process(kind string, content any) error {
+	data, err := json.Marshal(map[string]any{"type": kind, "content": content})
 	if err != nil {
 		return err
 	}

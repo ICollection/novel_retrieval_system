@@ -40,8 +40,8 @@ func newModelClient(cfg config.Model, sign string) (*ModelClient, error) {
 //
 // param: ctx 上下文。
 // param: text 待算文本。
-// return: 文本向量，错误信息。
-func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float32, error) {
+// return: 文本向量，输入词元，错误信息。
+func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float32, int32, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
 	defer cancel()
 	// 获取文本向量。
@@ -53,7 +53,7 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 	})
 	if err != nil {
 		slog.Error(mc.sign+"计算向量失败", "error", err)
-		return nil, err
+		return nil, 0, err
 	}
 	// 转换向量类型。
 	result := make([]float32, len(response.Data[0].Embedding))
@@ -61,7 +61,7 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 		result[i] = float32(x)
 	}
 	slog.Info(mc.sign+"模型完成向量", "tokens", response.Usage.PromptTokens)
-	return result, nil
+	return result, int32(response.Usage.PromptTokens), nil
 }
 
 // AnswerDirect 直接回答问题。
@@ -69,8 +69,8 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 // param: ctx 上下文。
 // param: system 系统提示词。
 // param: prompt 用户提示词。
-// return: 答案文本，错误信息。
-func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string) (*string, error) {
+// return: 答案文本，输入词元，输出词元，错误信息。
+func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string) (*string, int32, int32, error) {
 	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)
 	// 设置请求超时。
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
@@ -87,17 +87,17 @@ func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt s
 	}, option.WithJSONSet("chat_template_kwargs", map[string]any{"enable_thinking": false}))
 	if err != nil {
 		slog.Error(mc.sign+"生成回答失败", "error", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
 	if len(response.Choices) == 0 {
 		err := errors.New("SLM没有返回结果。")
 		slog.Error(mc.sign+"生成回答失败", "error", err)
-		return nil, err
+		return nil, int32(response.Usage.PromptTokens), int32(response.Usage.CompletionTokens), err
 	}
 	// 返回最终答案。
 	slog.Info(mc.sign+"模型完成回答", "token1", response.Usage.PromptTokens, "token2", response.Usage.CompletionTokens, "answer", response.Choices[0].Message.Content)
 	result := common.Trim(response.Choices[0].Message.Content)
-	return result, nil
+	return result, int32(response.Usage.PromptTokens), int32(response.Usage.CompletionTokens), nil
 }
 
 // AnswerStream 流式回答问题。
@@ -106,8 +106,8 @@ func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt s
 // param: system 系统提示词。
 // param: prompt 用户提示词。
 // param: callback 回调函数。
-// return: 答案文本，错误信息。
-func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt string, callback func(kind string, content string) error) (*string, error) {
+// return: 答案文本，输入词元，输出词元，错误信息。
+func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt string, callback func(kind string, content any) error) (*string, int32, int32, error) {
 	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)
 	// 设置请求超时。
 	ctx, cancel := context.WithTimeout(ctx, time.Second*time.Duration(mc.timeout))
@@ -143,7 +143,7 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 				// 思考过程中用户断开。
 				slog.Error(mc.sign+"用户中断思考", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
 				result := common.Trim(answer.String())
-				return result, err
+				return result, int32(usage.PromptTokens), int32(usage.CompletionTokens), err
 			}
 		}
 		// 答案内容。
@@ -153,7 +153,7 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 				// 回答过程中用户断开。
 				slog.Error(mc.sign+"用户中断回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
 				result := common.Trim(answer.String())
-				return result, err
+				return result, int32(usage.PromptTokens), int32(usage.CompletionTokens), err
 			}
 		}
 	}
@@ -162,12 +162,12 @@ func (mc *ModelClient) AnswerStream(ctx context.Context, system string, prompt s
 		// 模型或网络中断。
 		slog.Error(mc.sign+"模型中断回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "error", err)
 		result := common.Trim(answer.String())
-		return result, err
+		return result, int32(usage.PromptTokens), int32(usage.CompletionTokens), err
 	}
 	// 返回正常结果。
 	slog.Info(mc.sign+"模型完成回答", "token1", usage.PromptTokens, "token2", usage.CompletionTokens, "answer", answer.String())
 	result := common.Trim(answer.String())
-	return result, nil
+	return result, int32(usage.PromptTokens), int32(usage.CompletionTokens), nil
 }
 
 // getThinking 获取思考内容。

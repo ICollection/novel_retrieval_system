@@ -7,8 +7,8 @@ var (
 	Prepare *prepareService
 	// Discuss 用户问答服务。
 	Discuss *discussService
-	// Converse 用户对话服务。
-	Converse *converseService
+	// Compose 问答编排服务。
+	Compose *composeService
 )
 
 // Initialize 初始化服务层。
@@ -16,5 +16,5 @@ func Initialize() {
 	Account = &accountService{}
 	Prepare = &prepareService{}
 	Discuss = &discussService{}
-	Converse = &converseService{}
+	Compose = &composeService{}
 }

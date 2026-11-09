@@ -15,6 +15,12 @@ import (
 //go:embed config.yaml
 var content []byte
 
+//go:embed recall.txt
+var Recall string
+
+//go:embed normal.txt
+var Normal string
+
 // Cfg 全局配置。
 var Cfg *Config
 

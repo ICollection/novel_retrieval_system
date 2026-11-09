@@ -3,7 +3,6 @@ package handler
 import (
 	"service/internal/common"
 	"service/internal/config"
-	"service/internal/response"
 	"service/internal/server"
 	"service/internal/service"
 
@@ -117,7 +116,7 @@ func (dh *discussHandler) appendMessage(ctx *gin.Context) {
 	}
 	writer := server.CreateAnswerWriter(ctx)
 	// 保存用户消息。
-	sessionId, err := response.ComposeAnswer(ctx, session, content, novels, writer.Process)
+	sessionId, err := service.Compose.ComposeAnswer(ctx, session, content, novels, writer.Process)
 	if err != nil {
 		writer.Failure(err.Error())
 		return
