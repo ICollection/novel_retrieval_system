@@ -14,6 +14,11 @@ import (
 )
 
 // normalize 归一化文档。
+//
+// param: ctx 上下文。
+// param: origin 原始文件编码。
+// param: kind 原始文件类型。
+// return: 错误信息。
 func normalize(ctx context.Context, origin string, kind string) error {
 	switch kind {
 	case common.FileTypeTXT:
@@ -25,16 +30,29 @@ func normalize(ctx context.Context, origin string, kind string) error {
 }
 
 // normalizeTxt 归一化 txt 格式文档。
+//
+// param: ctx 上下文。
+// param: origin 原始文件编码。
+// return: 错误信息。
 func normalizeTxt(ctx context.Context, origin string) error {
 	return convertFile(ctx, origin, common.FileTypeTXT)
 }
 
 // normalizeMd 归一化 md 格式文档。
+//
+// param: ctx 上下文。
+// param: origin 原始文件编码。
+// return: 错误信息。
 func normalizeMd(ctx context.Context, origin string) error {
 	return convertFile(ctx, origin, common.FileTypeMD)
 }
 
 // convertFile 读取原始文件，解码清洗后保存为 Markdown 文档。
+//
+// param: ctx 上下文。
+// param: origin 原始文件编码。
+// param: kind 原始文件类型。
+// return: 错误信息。
 func convertFile(ctx context.Context, origin string, kind string) error {
 	// 读取原始文件。
 	data, err := storage.OSS.Select(ctx, "Origin", origin+"."+kind)
@@ -54,6 +72,9 @@ func convertFile(ctx context.Context, origin string, kind string) error {
 }
 
 // convertText 将原始数据转换为 UTF-8 编码的文本。
+//
+// param: data 原始文件内容。
+// return: 转换后的文本，错误信息。
 func convertText(data []byte) ([]byte, error) {
 	// 去除 UTF-8 BOM。
 	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})

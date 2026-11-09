@@ -158,7 +158,7 @@ func (dh *discussHandler) appendMessage(ctx *gin.Context) {
 		server.Failure(ctx, server.Failure400, "请求参数错误。")
 		return
 	}
-	writer := server.CreateAnswerWriter(ctx)
+	writer := server.NewAnswerWriter(ctx)
 	// 保存用户消息。
 	sessionId, err := service.Compose.ComposeAnswer(ctx, session, content, novels, writer.Process)
 	if err != nil {

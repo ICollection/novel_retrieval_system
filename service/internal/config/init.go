@@ -15,12 +15,18 @@ import (
 //go:embed config.yaml
 var content []byte
 
+// Recall 召回用系统提示词。
+//
 //go:embed recall.txt
 var Recall string
 
+// Normal 问答用系统提示词。
+//
 //go:embed normal.txt
 var Normal string
 
+// Compress 压缩用系统提示词。
+//
 //go:embed compress.txt
 var Compress string
 
@@ -37,6 +43,8 @@ func init() {
 }
 
 // parse 解析配置文件。
+//
+// return: 全局配置，错误信息。
 func parse() (*Config, error) {
 	// 读取配置文件。
 	reader := viper.New()

@@ -52,6 +52,8 @@ type Postgres struct {
 }
 
 // GetDSN 获取连接字符串。
+//
+// return: 连接字符串。
 func (p *Postgres) GetDSN() string {
 	url := url.URL{Scheme: "postgres", User: url.UserPassword(p.Username, p.Password), Host: net.JoinHostPort(p.Host, strconv.Itoa(p.Port)), Path: "/" + p.Database, RawQuery: "sslmode=" + p.SSLMode}
 	return url.String()

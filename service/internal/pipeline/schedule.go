@@ -11,6 +11,8 @@ import (
 )
 
 // schedule 启动定时器。
+//
+// param: ctx 上下文。
 func schedule(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -26,6 +28,8 @@ func schedule(ctx context.Context) {
 }
 
 // assign 查询可用任务。
+//
+// param: ctx 上下文。
 func assign(ctx context.Context) {
 	missions, err := storage.RDB.QueryMatrix[mission](ctx, "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ($1,$2,$3,$4) order by mission.status desc,mission.launch_time;", common.MissionStatus02, common.MissionStatus03, common.MissionStatus04, common.MissionStatus05)
 	if err != nil {
@@ -71,6 +75,10 @@ var (
 )
 
 // request 申请启动任务。
+//
+// param: parent 父级上下文。
+// param: mission 任务编码。
+// return: 任务上下文，并发已满或任务已在运行时返回 nil。
 func request(parent context.Context, mission string) context.Context {
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -86,6 +94,8 @@ func request(parent context.Context, mission string) context.Context {
 }
 
 // release 记录释放任务。
+//
+// param: mission 任务编码。
 func release(mission string) {
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -93,6 +103,9 @@ func release(mission string) {
 }
 
 // handle 处理单个任务。
+//
+// param: ctx 上下文。
+// param: mission 任务信息。
 func handle(ctx context.Context, mission *mission) {
 	defer release(*mission.Mission)
 	status := *mission.Status

@@ -21,6 +21,8 @@ func Initialize() {
 }
 
 // Register 注册处理器路由。
+//
+// param: engine 网站引擎。
 func Register(engine *gin.Engine) {
 	account.register(engine)
 	prepare.register(engine)

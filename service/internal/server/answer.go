@@ -13,8 +13,11 @@ type AnswerWriter struct {
 	ctx *gin.Context
 }
 
-// CreateAnswerWriter 创建流式响应写入器。
-func CreateAnswerWriter(ctx *gin.Context) *AnswerWriter {
+// NewAnswerWriter 创建流式响应写入器。
+//
+// param: ctx 上下文。
+// return: 流式响应写入器。
+func NewAnswerWriter(ctx *gin.Context) *AnswerWriter {
 	// 切换为流式响应。
 	ctx.Header("Content-Type", "text/event-stream; charset=utf-8")
 	ctx.Header("Cache-Control", "no-cache")
@@ -27,6 +30,10 @@ func CreateAnswerWriter(ctx *gin.Context) *AnswerWriter {
 }
 
 // Process 写入一个片段。
+//
+// param: kind 片段类型。
+// param: content 片段内容。
+// return: 错误信息。
 func (writer *AnswerWriter) Process(kind string, content any) error {
 	data, err := json.Marshal(map[string]any{"type": kind, "content": content})
 	if err != nil {
@@ -40,11 +47,17 @@ func (writer *AnswerWriter) Process(kind string, content any) error {
 }
 
 // Success 写入成功消息。
+//
+// param: session 会话编码。
+// return: 错误信息。
 func (writer *AnswerWriter) Success(session string) error {
 	return writer.Process("finish", session)
 }
 
 // Failure 写入失败消息。
+//
+// param: message 异常消息。
+// return: 错误信息。
 func (writer *AnswerWriter) Failure(message string) error {
 	return writer.Process("error", message)
 }

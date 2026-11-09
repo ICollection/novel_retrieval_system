@@ -72,6 +72,11 @@ type fragment struct {
 }
 
 // organize 分章切片文件。
+//
+// param: ctx 上下文。
+// param: origin 原始文件编码。
+// param: novel 小说编码。
+// return: 分片总数，字符数，章节数，错误信息。
 func organize(ctx context.Context, origin string, novel string) (int32, int32, int32, error) {
 	// 读取归一化文档。
 	data, err := storage.OSS.Select(ctx, "Normal", origin+".md")
@@ -106,6 +111,9 @@ func organize(ctx context.Context, origin string, novel string) (int32, int32, i
 }
 
 // divide 识别章节并拆分段落。
+//
+// param: text 归一化文档。
+// return: 章节列表。
 func divide(text string) []chapter {
 	lines := strings.Split(text, "\n")
 	// 计算每行的字符起点。
@@ -157,6 +165,9 @@ func divide(text string) []chapter {
 }
 
 // heading 判断是否为 Markdown 标题行。
+//
+// param: line 文本行。
+// return: 章节标题，是否为标题行。
 func heading(line string) (string, bool) {
 	text := strings.TrimSpace(line)
 	if strings.HasPrefix(text, "#") == false {
@@ -178,6 +189,9 @@ func heading(line string) (string, bool) {
 }
 
 // match 判断是否为章节标题行。
+//
+// param: line 文本行。
+// return: 章节标题，是否为标题行。
 func match(line string) (string, bool) {
 	text := strings.TrimSpace(line)
 	if chapterPattern.MatchString(text) || englishPattern.MatchString(text) {
@@ -187,6 +201,9 @@ func match(line string) (string, bool) {
 }
 
 // title 截取合法的章节标题。
+//
+// param: text 章节标题。
+// return: 长度不超过 200 字符的章节标题。
 func title(text string) string {
 	runes := []rune(text)
 	if len(runes) > 200 {
@@ -196,6 +213,12 @@ func title(text string) string {
 }
 
 // collect 收集指定行区间内的段落。
+//
+// param: lines 文档行列表。
+// param: starts 每行的字符起点。
+// param: from 起始行下标。
+// param: to 结束行下标（不含）。
+// return: 段落列表。
 func collect(lines []string, starts []int32, from int, to int) []paragraph {
 	result := make([]paragraph, 0)
 	for index := from; index < to && index < len(lines); index++ {
@@ -212,6 +235,9 @@ func collect(lines []string, starts []int32, from int, to int) []paragraph {
 }
 
 // section 按段落切片，相邻分片保留末尾若干段落作为重叠。
+//
+// param: paragraphs 章节段落列表。
+// return: 分片列表。
 func section(paragraphs []paragraph) []fragment {
 	groups := make([][2]int, 0)
 	start := 0
@@ -296,6 +322,11 @@ func section(paragraphs []paragraph) []fragment {
 }
 
 // combine 拼接指定段落区间的正文。
+//
+// param: paragraphs 章节段落列表。
+// param: from 起始段落下标。
+// param: to 结束段落下标（不含）。
+// return: 以换行符分隔的正文。
 func combine(paragraphs []paragraph, from int, to int) string {
 	texts := make([]string, 0, to-from)
 	for index := from; index < to; index++ {
@@ -305,6 +336,11 @@ func combine(paragraphs []paragraph, from int, to int) string {
 }
 
 // rewind 计算下一片的起始段落，保留末尾若干段落作为重叠。
+//
+// param: paragraphs 章节段落列表。
+// param: start 本片净片起点，重叠不能越过该位置。
+// param: end 本片结束段落下标。
+// return: 下一片的起始段落下标。
 func rewind(paragraphs []paragraph, start int, end int) int {
 	next := end
 	total := 0
@@ -328,11 +364,19 @@ func rewind(paragraphs []paragraph, start int, end int) int {
 }
 
 // measure 统计段落的字符数。
+//
+// param: item 段落信息。
+// return: 段落的字符数。
 func measure(item paragraph) int {
 	return utf8.RuneCountInString(item.text)
 }
 
 // rangeMeasure 统计指定段落区间的字符数。
+//
+// param: paragraphs 章节段落列表。
+// param: from 起始段落下标。
+// param: to 结束段落下标（不含）。
+// return: 区间内的字符数。
 func rangeMeasure(paragraphs []paragraph, from int, to int) int {
 	total := 0
 	for index := from; index < to; index++ {
@@ -342,6 +386,13 @@ func rangeMeasure(paragraphs []paragraph, from int, to int) int {
 }
 
 // store 保存单个章节及其分片。
+//
+// param: ctx 上下文。
+// param: novel 小说编码。
+// param: serial 章节序号。
+// param: item 章节信息。
+// param: offset 已有分片数量，用于计算分片序号。
+// return: 本章节的分片数量，错误信息。
 func store(ctx context.Context, novel string, serial int32, item chapter, offset int32) (int32, error) {
 	// 计算分片。
 	fragments := section(item.paragraphs)
@@ -363,6 +414,10 @@ func store(ctx context.Context, novel string, serial int32, item chapter, offset
 }
 
 // prefix 生成分片正文的章节前缀。
+//
+// param: serial 章节序号。
+// param: name 章节标题。
+// return: 以换行符结尾的章节前缀。
 func prefix(serial int32, name string) string {
 	// 标题本身已含章节标记时不再重复编号。
 	if name == fallbackTitle || chapterPattern.MatchString(name) || englishPattern.MatchString(name) {

@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// main 主函数。
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	// 初始化存储层。

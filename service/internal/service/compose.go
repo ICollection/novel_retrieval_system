@@ -312,7 +312,7 @@ func (cs *composeService) makeupConsultPrompt(ctx *gin.Context, recalls []recall
 				builder.WriteString("\n")
 			}
 		}
-		result = append(result, fmt.Sprintf("====== 参考片段【%d】《%s》%s ======", i+1, segments[0].NovelTitle, segments[0].ChapterTitle))
+		result = append(result, fmt.Sprintf("====== 参考片段【%d】《%s》%s ======", i+1, *segments[0].NovelTitle, *segments[0].ChapterTitle))
 		result = append(result, builder.String())
 		references = append(references, reference{Serial: i + 1, OriginID: segments[0].OriginID, OriginType: segments[0].OriginType, NovelId: segments[0].NovelID, NovelTitle: segments[0].NovelTitle, ChapterId: segments[0].ChapterID, ChapterTitle: segments[0].ChapterTitle})
 	}

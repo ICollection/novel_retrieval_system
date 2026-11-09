@@ -9,6 +9,11 @@ import (
 )
 
 // vectorize 切片向量入库。
+//
+// param: ctx 上下文。
+// param: mission 任务编码。
+// param: novel 小说编码。
+// return: 已入库的分片序号，错误信息。
 func vectorize(ctx context.Context, mission string, novel string) (int32, error) {
 	// 获取起止向量。
 	total_count, err := storage.RDB.QuerySimple[int32](ctx, "select total_count from mission where id=$1", mission)
@@ -62,7 +67,9 @@ type segment struct {
 	Suffix  *string `db:"suffix"`
 }
 
-// 获取分片内容。
+// getContent 获取分片内容。
+//
+// return: 由前缀、正文、后缀拼接的分片内容。
 func (segment *segment) getContent() string {
 	builder := strings.Builder{}
 	if segment.Prefix != nil {
