@@ -3,7 +3,7 @@
  * 文档处理页面。
  *
  * 页面分三块：上传文件、任务列表（控制启动/取消/重试）、小说列表（内容信息）。
- * 小说来自 POST /novel/filter，任务来自 POST /mission/filter，前端按 novel 合并后展示。
+ * 小说来自 GET /prepare/filterNovel，任务来自 GET /prepare/filterMission，前端按 novel 合并后展示。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -163,8 +163,8 @@ async function refresh(silent = false) {
   if (!silent) loading.value = true
   try {
     const [novelContent, missionContent] = await Promise.all([
-      request<NovelItem[]>('/novel/filter', { token: session.token }),
-      request<MissionItem[]>('/mission/filter', { token: session.token })
+      request<NovelItem[]>('/prepare/filterNovel', { token: session.token }),
+      request<MissionItem[]>('/prepare/filterMission', { token: session.token })
     ])
     novels.value = Array.isArray(novelContent) ? novelContent : []
     missions.value = Array.isArray(missionContent) ? missionContent : []
@@ -191,7 +191,7 @@ async function upload(file: LocalFile, raw: File) {
   form.append('file', raw, raw.name)
 
   try {
-    await request<string>('/origin/upload', {
+    await request<string>('/prepare/uploadOrigin', {
       method: 'POST',
       token: session.token,
       body: form
@@ -253,7 +253,7 @@ async function act(path: string, mission: MissionItem, message: string) {
 }
 
 function launch(mission: MissionItem) {
-  void act('/mission/launch', mission, `已启动：${mission.novel_name ?? mission.id}`)
+  void act('/prepare/launchMission', mission, `已启动：${mission.novel_name ?? mission.id}`)
 }
 
 async function cancel(mission: MissionItem) {
@@ -266,7 +266,7 @@ async function cancel(mission: MissionItem) {
   } catch {
     return
   }
-  void act('/mission/cancel', mission, `已取消：${mission.novel_name ?? mission.id}`)
+  void act('/prepare/cancelMission', mission, `已取消：${mission.novel_name ?? mission.id}`)
 }
 
 /** 修改小说名称的对话框。 */
@@ -292,7 +292,7 @@ async function saveTitle() {
   }
   saving.value = true
   try {
-    await request<string>('/novel/modify', {
+    await request<string>('/prepare/modifyNovel', {
       method: 'PATCH',
       token: session.token,
       query: { id: editing.value.id, title }
@@ -328,7 +328,7 @@ async function removeNovel(novel: NovelItem) {
   }
   deleting.value = novel.id
   try {
-    await request<string>('/novel/delete', {
+    await request<string>('/prepare/deleteNovel', {
       method: 'DELETE',
       token: session.token,
       query: { id: novel.id }

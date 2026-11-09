@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"service/internal/common"
 	"service/internal/server"
 	"service/internal/storage"
@@ -14,72 +13,6 @@ import (
 
 // converseService 用户对话服务。
 type converseService struct{}
-
-// FilterSession 查询用户会话。
-//
-// param: ctx 上下文。
-// return: 用户会话，错误信息。
-func (service *converseService) FilterSession(ctx *gin.Context) ([]session, error) {
-	claims := ctx.MustGet("claims").(*server.Claims)
-	// 查询用户会话。
-	result, err := storage.RDB.QueryMatrix[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where create_user=$1 order by update_time desc;", claims.Subject)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// ModifySession 修改用户会话。
-//
-// param: ctx 上下文。
-// param: id 会话编码。
-// param: title 对话标题。
-// return: 用户会话，错误信息。
-func (service *converseService) ModifySession(ctx *gin.Context, id string, title string) (*string, error) {
-	claims := ctx.MustGet("claims").(*server.Claims)
-	// 验证会话存在。
-	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
-	if err != nil {
-		return nil, err
-	}
-	if *session.CreateUser != claims.Subject {
-		return nil, errors.New("会话不是用户创建。")
-	}
-	// 修改用户会话。
-	err = storage.RDB.QueryNaught(ctx, "update session set title=$1 where id=$2 ", title, id)
-	if err != nil {
-		return nil, err
-	}
-	// 返回会话编码。
-	return session.Id, nil
-}
-
-// DeleteSession 删除用户会话。
-//
-// param: ctx 上下文。
-// param: id 会话编码。
-// return: 会话编码，错误信息。
-func (service *converseService) DeleteSession(ctx *gin.Context, id string) (*string, error) {
-	claims := ctx.MustGet("claims").(*server.Claims)
-	// 验证会话存在。
-	session, err := storage.RDB.QuerySingle[session](ctx, "select id,title,summary,contain,current,create_user,create_time,update_time from session where id=$1", id)
-	if err != nil {
-		return nil, err
-	}
-	if *session.CreateUser != claims.Subject {
-		return nil, errors.New("会话不是用户创建。")
-	}
-	// 删除用户会话。
-	var batch storage.Batch
-	batch.Append("delete from message where session=$1", session.Id)
-	batch.Append("delete from session where id=$1", session.Id)
-	err = storage.RDB.BatchNaught(ctx, &batch)
-	if err != nil {
-		return nil, err
-	}
-	// 返回会话编码。
-	return session.Id, nil
-}
 
 // AppendHumanMessage 增加会话用户消息。
 func (service *converseService) AppendHumanMessage(ctx *gin.Context, session *string, content *string, novels []string) (*string, error) {
@@ -152,7 +85,7 @@ func (service *converseService) FilterRecentMessage(ctx *gin.Context, id *string
 		return nil, err
 	}
 	// 获取最近会话。
-	messages, err := storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<=$2 and serial>$3 order by serial;", session.Id, session.Current, *session.Current-recent)
+	messages, err := storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<=$2 and serial>$3 order by serial;", session.ID, session.Current, *session.Current-recent)
 	if err != nil {
 		return nil, err
 	}
@@ -175,9 +108,9 @@ func (service *converseService) FilterEffectMessage(ctx *gin.Context, id string)
 	// 加入历史问题。
 	var messages []message
 	if session.Contain != nil {
-		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<$2 and serial>$3 order by serial;", session.Id, session.Current, session.Contain)
+		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<$2 and serial>$3 order by serial;", session.ID, session.Current, session.Contain)
 	} else {
-		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<$2 order by serial;", session.Id, session.Current)
+		messages, err = storage.RDB.QueryMatrix[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial<$2 order by serial;", session.ID, session.Current)
 	}
 	if err != nil {
 		return nil, err
@@ -193,7 +126,7 @@ func (service *converseService) FilterEffectMessage(ctx *gin.Context, id string)
 		}
 	}
 	// 加入当前问题。
-	message, err := storage.RDB.QuerySingle[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial=$2 order by serial;", session.Id, session.Current)
+	message, err := storage.RDB.QuerySingle[message](ctx, "select id,session,serial,human,content,novels,segments,complete,create_time from message where session=$1 and serial=$2 order by serial;", session.ID, session.Current)
 	if err != nil {
 		return nil, err
 	}
@@ -201,29 +134,4 @@ func (service *converseService) FilterEffectMessage(ctx *gin.Context, id string)
 	result = append(result, "用户提问："+*message.Content)
 	// 返回合成消息。
 	return result, nil
-}
-
-// session 用户会话。
-type session struct {
-	Id         *string    `db:"id" json:"id"`
-	Title      *string    `db:"title" json:"title"`
-	Summary    *string    `db:"summary" json:"summary"`
-	Contain    *string    `db:"contain" json:"contain"`
-	Current    *int32     `db:"current" json:"current"`
-	CreateUser *string    `db:"create_user" json:"create_user"`
-	CreateTime *time.Time `db:"create_time" json:"create_time"`
-	UpdateTime *time.Time `db:"update_time" json:"update_time"`
-}
-
-// message 会话消息。
-type message struct {
-	Id         *string    `db:"id" json:"id"`
-	Session    *string    `db:"session" json:"session"`
-	Serial     *int32     `db:"serial" json:"serial"`
-	Human      *bool      `db:"human" json:"human"`
-	Content    *string    `db:"content" json:"content"`
-	Novels     *string    `db:"novels" json:"novels"`
-	Segments   *string    `db:"segments" json:"segments"`
-	Complete   *bool      `db:"complete" json:"complete"`
-	CreateTime *time.Time `db:"create_time" json:"create_time"`
 }

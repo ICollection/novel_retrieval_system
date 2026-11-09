@@ -95,7 +95,7 @@ export async function signIn(login: string, password: string): Promise<Session> 
     throw new Error('登录名和密码不能为空')
   }
 
-  const token = await request<string>('/account/verify', {
+  const token = await request<string>('/account/verifyAccount', {
     query: { login: login.trim(), password }
   })
   if (typeof token !== 'string') {

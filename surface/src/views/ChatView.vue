@@ -2,15 +2,15 @@
 /**
  * 对话问答页面。
  *
- * 会话来自 GET /converse/filterSession，历史消息来自 GET /converse/filterMessage，
- * 提问通过 POST /converse/appendMessage 以流式响应（text/event-stream）返回。
+ * 会话来自 GET /discuss/filterSession，历史消息来自 GET /discuss/filterMessage，
+ * 提问通过 POST /discuss/appendMessage 以流式响应（text/event-stream）返回。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { API_BASE_URL, request } from '../api'
 import { getSession } from '../auth'
 
-/** 会话，字段与后端 service/converse.go 中的 session 结构一致。 */
+/** 会话，字段与后端 service/discuss_service.go 中的 session 结构一致。 */
 interface SessionItem {
   id: string | null
   title: string | null
@@ -22,7 +22,7 @@ interface SessionItem {
   update_time: string | null
 }
 
-/** 会话消息，字段与后端 service/converse.go 中的 message 结构一致。 */
+/** 会话消息，字段与后端 service/discuss_service.go 中的 message 结构一致。 */
 interface MessageItem {
   id: string | null
   session: string | null
@@ -133,7 +133,7 @@ async function loadSessions() {
   }
   loadingSessions.value = true
   try {
-    const content = await request<SessionItem[]>('/converse/filterSession', {
+    const content = await request<SessionItem[]>('/discuss/filterSession', {
       token
     })
     sessions.value = Array.isArray(content) ? content : []
@@ -150,7 +150,7 @@ async function loadNovels() {
     return
   }
   try {
-    const content = await request<NovelItem[]>('/novel/filter', { token })
+    const content = await request<NovelItem[]>('/prepare/filterNovel', { token })
     novels.value = (Array.isArray(content) ? content : []).filter((item) => item.status === '06')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载小说失败')
@@ -166,7 +166,7 @@ async function openSession(id: string) {
   messages.value = []
   loadingMessages.value = true
   try {
-    const content = await request<MessageItem[]>('/converse/filterMessage', {
+    const content = await request<MessageItem[]>('/discuss/filterMessage', {
       token,
       query: { session: id }
     })
@@ -281,7 +281,7 @@ async function send() {
 
   controller = new AbortController()
   try {
-    const response = await fetch(`${API_BASE_URL}/converse/appendMessage`, {
+    const response = await fetch(`${API_BASE_URL}/discuss/appendMessage`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: form,
@@ -325,7 +325,7 @@ async function renameSession(item: SessionItem) {
     const form = new FormData()
     form.append('id', item.id)
     form.append('title', title)
-    await request<string>('/converse/modifySession', { method: 'POST', token, body: form })
+    await request<string>('/discuss/modifySession', { method: 'POST', token, body: form })
     const target = sessions.value.find((session) => session.id === item.id)
     if (target) {
       target.title = title
@@ -355,7 +355,7 @@ async function deleteSession(item: SessionItem) {
     return
   }
   try {
-    await request<string>('/converse/deleteSession', {
+    await request<string>('/discuss/deleteSession', {
       method: 'DELETE',
       token,
       query: { id: item.id }

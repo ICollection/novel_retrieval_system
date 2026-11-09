@@ -78,7 +78,7 @@ async function load() {
   }
   loading.value = true
   try {
-    accounts.value = (await request<Account[] | null>('/account/filter', { token })) ?? []
+    accounts.value = (await request<Account[] | null>('/account/filterAccount', { token })) ?? []
   } catch (error) {
     ElMessage.error(messageOf(error))
   } finally {
@@ -115,7 +115,7 @@ async function submitAdd() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/append', {
+    await request<string>('/account/appendAccount', {
       method: 'POST',
       token,
       query: {
@@ -146,7 +146,7 @@ async function submitEdit() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/modify', {
+    await request<string>('/account/modifyAccount', {
       method: 'PATCH',
       token,
       query: {
@@ -176,7 +176,7 @@ async function submitPassword() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/change', {
+    await request<string>('/account/changeAccount', {
       method: 'PATCH',
       token,
       query: { id: current.value.id, password: passwordForm.password }
@@ -202,7 +202,7 @@ async function remove(row: Account) {
     return
   }
   try {
-    await request<string>('/account/delete', {
+    await request<string>('/account/deleteAccount', {
       method: 'DELETE',
       token,
       query: { id: row.id }
