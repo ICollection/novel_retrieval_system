@@ -280,7 +280,7 @@ async function showConsume() {
       token,
       query: { id: currentSession.value }
     })
-    ElMessageBox.alert(consumeHtml(content), '次元统计', {
+    ElMessageBox.alert(consumeHtml(content), '词元统计', {
       dangerouslyUseHTMLString: true,
       confirmButtonText: '知道了',
       customClass: 'consume-message-box'
@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
             <p>{{ currentTitle }}</p>
           </div>
           <div class="head-actions">
-            <el-button :disabled="sending || !currentSession" @click="showConsume">次元统计</el-button>
+            <el-button :disabled="sending || !currentSession" @click="showConsume">词元统计</el-button>
             <el-button :disabled="sending" @click="newSession">新建会话</el-button>
           </div>
         </div>

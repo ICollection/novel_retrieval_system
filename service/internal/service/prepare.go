@@ -137,7 +137,7 @@ func (ps *prepareService) CancelMission(ctx *gin.Context, id *string) (*string, 
 // param: ctx 上下文。
 // return: 参考小说，错误信息。
 func (ps *prepareService) FilterNovel(ctx *gin.Context) ([]novel, error) {
-	result, err := storage.RDB.QueryMatrix[novel](ctx, "select novel.id,novel.origin,origin.type,novel.title,mission.id as mission,mission.status,novel.character_count,novel.chapter_count,account.id as create_code,account.name as create_name,novel.create_time,novel.update_time from novel inner join origin on origin.id=novel.origin inner join account on account.id=novel.create_user inner join mission on mission.novel=novel.id order by novel.create_time;")
+	result, err := storage.RDB.QueryMatrix[novel](ctx, "select novel.id,novel.origin,origin.type,novel.title,mission.id as mission,mission.status,novel.character_count,novel.chapter_count,account.id as create_code,account.name as create_name,novel.create_time,novel.update_time from novel inner join origin on origin.id=novel.origin inner join account on account.id=novel.create_user inner join mission on mission.novel=novel.id order by novel.create_time desc;")
 	if err != nil {
 		return nil, err
 	}

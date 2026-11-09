@@ -69,7 +69,7 @@ func (mc *ModelClient) ComputeVector(ctx context.Context, text string) ([]float3
 // param: ctx 上下文。
 // param: system 系统提示词。
 // param: prompt 用户提示词。
-// param: tokens 次元限制。
+// param: tokens 词元限制。
 // return: 答案文本，输入词元，输出词元，错误信息。
 func (mc *ModelClient) AnswerDirect(ctx context.Context, system string, prompt string, tokens int32) (*string, int32, int32, error) {
 	slog.Debug(mc.sign+"调用模型提问", "system", system, "prompt", prompt)

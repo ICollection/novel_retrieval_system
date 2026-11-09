@@ -277,7 +277,7 @@ async function showConsume(row: Account) {
       token,
       query: { id: row.id }
     })
-    ElMessageBox.alert(consumeHtml(content), `次元统计 · ${row.name}`, {
+    ElMessageBox.alert(consumeHtml(content), `词元统计 · ${row.name}`, {
       dangerouslyUseHTMLString: true,
       confirmButtonText: '知道了',
       customClass: 'consume-message-box'
@@ -327,7 +327,7 @@ onMounted(load)
         <el-table-column label="操作" width="290" align="right">
           <template #default="{ row }">
             <el-button link type="primary" :disabled="!canManage" @click="showConsume(row)">
-              次元统计
+              词元统计
             </el-button>
             <el-button link type="primary" :disabled="!canManage" @click="openEdit(row)">修改</el-button>
             <el-button link type="primary" :disabled="!canManage" @click="openPassword(row)">

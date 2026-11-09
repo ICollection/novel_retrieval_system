@@ -453,13 +453,13 @@ onBeforeUnmount(() => {
 
       <!-- 任务视图：数据来自任务查询接口 -->
       <el-table v-if="tab === 'task'" v-loading="loading" :data="tasks" row-key="id" class="doc-table">
-        <el-table-column label="小说名称" min-width="120">
+        <el-table-column label="小说" min-width="110">
           <template #default="{ row }">
             <span class="doc-title">{{ row.novel_name || row.novel_code || '—' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="任务状态" width="86">
+        <el-table-column label="状态" min-width="66">
           <template #default="{ row }">
             <el-tooltip v-if="row.status === '07'" placement="top">
               <span class="doc-sub">{{ meta(row.status).label }}</span>
@@ -472,43 +472,51 @@ onBeforeUnmount(() => {
           </template>
         </el-table-column>
 
-        <el-table-column label="分片总数" width="82" align="right">
+        <el-table-column label="总片数" min-width="66" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.total_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="入库数量" width="82" align="right">
+        <el-table-column label="入库数" min-width="66" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.embed_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="入库进度" width="112" align="right">
+        <el-table-column label="进度" min-width="76" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ formatPercent(percent(row)) }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="启动时间" width="145">
+        <el-table-column label="启动时间" min-width="100">
           <template #default="{ row }">
-            <span class="doc-sub">{{ row.launch_time ? formatTime(row.launch_time) : '' }}</span>
+            <el-tooltip v-if="row.launch_time" placement="top" :content="formatTime(row.launch_time)">
+              <span class="doc-sub">{{ formatTime(row.launch_time) }}</span>
+            </el-tooltip>
+            <span v-else class="doc-sub" />
           </template>
         </el-table-column>
 
-        <el-table-column label="完成时间" width="145">
+        <el-table-column label="完成时间" min-width="100">
           <template #default="{ row }">
-            <span class="doc-sub">{{ row.finish_time ? formatTime(row.finish_time) : '' }}</span>
+            <el-tooltip v-if="row.finish_time" placement="top" :content="formatTime(row.finish_time)">
+              <span class="doc-sub">{{ formatTime(row.finish_time) }}</span>
+            </el-tooltip>
+            <span v-else class="doc-sub" />
           </template>
         </el-table-column>
 
-        <el-table-column label="更新时间" width="145">
+        <el-table-column label="更新时间" min-width="100">
           <template #default="{ row }">
-            <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+            <el-tooltip placement="top" :content="formatTime(row.update_time)">
+              <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+            </el-tooltip>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="92" align="right">
+        <el-table-column label="操作" min-width="68" align="right">
           <template #default="{ row }">
             <el-button
               v-if="['01', '07', '08'].includes(row.status)"
@@ -534,49 +542,53 @@ onBeforeUnmount(() => {
 
       <!-- 小说视图：数据来自小说查询接口 -->
       <el-table v-else v-loading="loading" :data="filtered" row-key="id" class="doc-table">
-        <el-table-column label="小说名称" min-width="150">
+        <el-table-column label="小说" min-width="140">
           <template #default="{ row }">
             <span class="doc-title">{{ row.title || '未命名' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="小说状态" width="80">
+        <el-table-column label="状态" min-width="70">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.status === '06' ? '就绪' : '等待' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="总字数" width="80" align="right">
+        <el-table-column label="总字数" min-width="70" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.character_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="章节数" width="80" align="right">
+        <el-table-column label="章节数" min-width="70" align="right">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.chapter_count ?? 0 }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="创建人" width="100">
+        <el-table-column label="创建用户" min-width="84">
           <template #default="{ row }">
             <span class="doc-sub">{{ row.create_name ?? '' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="创建时间" width="145">
+        <el-table-column label="创建时间" min-width="100">
           <template #default="{ row }">
-            <span class="doc-sub">{{ formatTime(row.create_time) }}</span>
+            <el-tooltip placement="top" :content="formatTime(row.create_time)">
+              <span class="doc-sub">{{ formatTime(row.create_time) }}</span>
+            </el-tooltip>
           </template>
         </el-table-column>
 
-        <el-table-column label="更新时间" width="145">
+        <el-table-column label="更新时间" min-width="100">
           <template #default="{ row }">
-            <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+            <el-tooltip placement="top" :content="formatTime(row.update_time)">
+              <span class="doc-sub">{{ formatTime(row.update_time) }}</span>
+            </el-tooltip>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="150" align="right">
+        <el-table-column label="操作" min-width="124" align="right">
           <template #default="{ row }">
             <el-button link type="primary" :disabled="!canModify" @click="openEdit(row)">修改</el-button>
             <el-tooltip
@@ -831,6 +843,13 @@ onBeforeUnmount(() => {
   color: var(--text-faint);
   font-size: 11.5px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 列宽自适应，窗口再窄也不显示横向滚动条 */
+.doc-table :deep(.el-scrollbar__bar.is-horizontal) {
+  display: none;
 }
 
 /* 禁用态的删除按钮包裹层，保持与前一按钮的间距 */

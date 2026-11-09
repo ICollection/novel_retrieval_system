@@ -65,7 +65,7 @@ body {
   color: var(--text-sub);
 }
 
-/* 次元统计弹窗：消息区默认按内容宽度收缩，这里让它撑满对话框 */
+/* 词元统计弹窗：消息区默认按内容宽度收缩，这里让它撑满对话框 */
 .consume-message-box .el-message-box__message {
   flex: 1;
 }
