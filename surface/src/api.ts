@@ -1,5 +1,8 @@
-/** 后端接口地址，端口与 service/internal/config/config.yaml 中的 web.port 保持一致。 */
-export const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8048/service`
+/** 后端接口地址，取自 .env.development / .env.production 中的 VITE_API_BASE_URL。 */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+
+/** 对象存储访问地址（含存储桶名称），取自 .env.* 中的 VITE_OSS_BASE_URL。 */
+export const OSS_BASE_URL = import.meta.env.VITE_OSS_BASE_URL
 
 /** 后端统一返回结构。 */
 export interface Result<T> {
@@ -31,7 +34,7 @@ export interface RequestOptions {
 
 /** 调用后端接口，成功返回 content，失败抛出 ApiError。 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const url = new URL(`${API_BASE_URL}${path}`)
+  const url = new URL(`${API_BASE_URL}${path}`, window.location.origin)
   Object.entries(options.query ?? {}).forEach(([key, value]) => {
     if (value !== undefined) {
       url.searchParams.set(key, value)

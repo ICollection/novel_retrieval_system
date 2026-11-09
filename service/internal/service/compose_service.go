@@ -63,7 +63,7 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 	answer, llmPrompt, llmAnswer, err := storage.LLM.AnswerStream(ctx, config.Normal, strings.Join(prompts, "\n"), callback)
 	consume.llmPrompt = llmPrompt
 	consume.llmAnswer = llmAnswer
-	for reference := range references {
+	for _, reference := range references {
 		callback("refer", reference)
 	}
 	if err != nil {
@@ -72,6 +72,11 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 	}
 	// 保存问题答案。
 	err = cs.appendModelMessage(ctx, *session, answer, novels, lo.Map(recalls, func(item recall, _ int) string { return item.ID }), consume, true)
+	if err != nil {
+		return nil, err
+	}
+	// 压缩早期问题。
+	err = cs.compressEarlyMessage(ctx, *session)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +285,7 @@ func (cs *composeService) makeupConsultPrompt(ctx *gin.Context, recalls []recall
 	// 查询拼写提示。
 	for i, section := range sections.sections {
 		var builder strings.Builder
-		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select segment.id as segment_id,novel.id as novel_id,novel.title as novel_title,chapter.id as chapter_id,chapter.title as chapter_title,segment.prefix,segment.middle,segment.suffix from segment inner join novel on novel.id=segment.novel inner join chapter on chapter.id=segment.chapter where segment.novel=$1 and segment.chapter=$2 and segment.serial>=$3 and segment.serial<=$4 order by segment.serial;", section.novel, section.chapter, section.start, section.final)
+		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select segment.id as segment_id,origin.id as origin_id,origin.type as origin_type, novel.id as novel_id,novel.title as novel_title,chapter.id as chapter_id,chapter.title as chapter_title,segment.prefix,segment.middle,segment.suffix from segment inner join novel on novel.id=segment.novel inner join origin on origin.id=novel.origin inner join chapter on chapter.id=segment.chapter where segment.novel=$1 and segment.chapter=$2 and segment.serial>=$3 and segment.serial<=$4 order by segment.serial;", section.novel, section.chapter, section.start, section.final)
 		if err != nil || len(segments) == 0 {
 			return nil, nil, err
 		}
@@ -291,14 +296,14 @@ func (cs *composeService) makeupConsultPrompt(ctx *gin.Context, recalls []recall
 			}
 			builder.WriteString(*segment.Middle)
 			builder.WriteString("\n")
-			if segment.Suffix != nil {
+			if j == len(segments)-1 && segment.Suffix != nil {
 				builder.WriteString(*segment.Suffix)
 				builder.WriteString("\n")
 			}
 		}
 		result = append(result, fmt.Sprintf("====== 参考片段【%d】《%s》%s ======", i+1, segments[0].NovelTitle, segments[0].ChapterTitle))
 		result = append(result, builder.String())
-		references = append(references, reference{Serial: i + 1, NovelId: segments[0].NovelID, NovelTitle: segments[0].NovelTitle, ChapterId: segments[0].ChapterID, ChapterTitle: segments[0].ChapterTitle})
+		references = append(references, reference{Serial: i + 1, OriginID: segments[0].OriginID, OriginType: segments[0].OriginType, NovelId: segments[0].NovelID, NovelTitle: segments[0].NovelTitle, ChapterId: segments[0].ChapterID, ChapterTitle: segments[0].ChapterTitle})
 	}
 	return result, references, nil
 }
@@ -339,6 +344,59 @@ func (cs *composeService) appendModelMessage(ctx *gin.Context, session string, c
 	return nil
 }
 
+// compressEarlyMessage 压缩早期消息。
+//
+// param: ctx 上下文。
+// param: session 会话编码。
+// return: 错误消息。
+func (cs *composeService) compressEarlyMessage(ctx *gin.Context, session string) error {
+	claims := ctx.MustGet("claims").(*server.Claims)
+	// 验证是否需要压缩。
+	length, err := storage.RDB.QuerySimple[int32](ctx, "select sum(length(content)) from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
+	if err != nil {
+		return err
+	}
+	if length == nil || *length < 4096 {
+		return nil
+	}
+	prompts := []string{}
+	// 加入历史摘要。
+	summary, err := storage.RDB.QuerySimple[string](ctx, "select summary from session where id=$1", session)
+	if err != nil {
+		return err
+	}
+	if summary != nil {
+		prompts = append(prompts, "======== 以下为历史摘要 ========")
+		prompts = append(prompts, "历史摘要："+*summary)
+	}
+	// 提取问答记录。
+	messages, err := storage.RDB.QueryMatrix[message](ctx, "select message.id,message.title,message.summary,message.contain,message.current,message.create_user,message.create_time,message.update_time from message inner join session on session.id=message.session where session.id=$1 and (session.contain is null or message.serial>session.contain) and message.serial<=session.current-10", session)
+	if err != nil {
+		return err
+	}
+	prompts = append(prompts, "======== 以下为历史对话 ========")
+	for _, message := range messages {
+		if *message.Human {
+			prompts = append(prompts, "用户提问："+*message.Content)
+		} else {
+			prompts = append(prompts, "助手回答："+*message.Content)
+		}
+	}
+	// 压缩问答记录。
+	summary, llmPrompt, llmAnswer, err := storage.LLM.AnswerDirect(ctx, config.Compress, strings.Join(prompts, "\n"))
+	if err != nil {
+		return err
+	}
+	var batch storage.Batch
+	batch.Append("update session set summary=$1,contain=current-10,update_time=$2 where id=$3", summary, time.Now().UTC(), session)
+	batch.Append("insert into consume(id,account,session,message,model,prompt,answer) values($1,$2,$3,$4,$5,$6,$7)", strings.ToUpper(uuid.NewV7().String()), claims.Subject, session, nil, "LLM", llmPrompt, llmAnswer)
+	err = storage.RDB.BatchNaught(ctx, &batch)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // 消费词元。
 type consume struct {
 	// llmPrompt 大语言模型输入数。
@@ -371,6 +429,10 @@ type recall struct {
 type reference struct {
 	// Serial 资料序号。
 	Serial int `json:"serial"`
+	// OriginID 原始编码。
+	OriginID *string `json:"origin_id"`
+	// OriginType 原始类型。
+	OriginType *string `json:"origin_type"`
 	// NovelId 小说编码。
 	NovelId *string `json:"novel_id"`
 	// NovelTitle 小说名称。
@@ -451,6 +513,10 @@ func (sections *sections) append(novel string, chapter string, serial int32) {
 type segment struct {
 	// SegmentID 切片编码。
 	SegmentID *string `db:"segment_id"`
+	// OriginID 原始编码。
+	OriginID *string `db:"origin_id"`
+	// OriginType 原始类型。
+	OriginType *string `db:"origin_type"`
 	// NovelID 小说编码。
 	NovelID *string `db:"novel_id"`
 	// NovelTitle 小说名称。

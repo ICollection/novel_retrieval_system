@@ -7,7 +7,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { API_BASE_URL, request } from '../api'
+import { API_BASE_URL, OSS_BASE_URL, request } from '../api'
 import { getSession } from '../auth'
 
 /** 会话，字段与后端 service/discuss_service.go 中的 session 结构一致。 */
@@ -42,6 +42,17 @@ interface NovelItem {
   status?: string
 }
 
+/** 参考资料。 */
+interface Reference {
+  serial: number
+  origin_id: string | null
+  origin_type: string | null
+  novel_id: string | null
+  novel_title: string | null
+  chapter_id: string | null
+  chapter_title: string | null
+}
+
 /** 页面消息。 */
 interface ChatMessage {
   id: number
@@ -49,6 +60,7 @@ interface ChatMessage {
   content: string
   thinking: string
   time: string
+  references?: Reference[]
   pending?: boolean
   error?: string
 }
@@ -56,7 +68,7 @@ interface ChatMessage {
 /** 流式事件。 */
 interface StreamEvent {
   type?: string
-  content?: string
+  content?: string | Reference
 }
 
 const token = getSession()?.token ?? ''
@@ -168,7 +180,7 @@ async function openSession(id: string) {
   try {
     const content = await request<MessageItem[]>('/discuss/filterMessage', {
       token,
-      query: { session: id }
+      query: { session: id, recent: 60 }
     })
     messages.value = (Array.isArray(content) ? content : []).map((item) => ({
       id: ++sequence,
@@ -208,21 +220,26 @@ function applyEvent(raw: string, reply: ChatMessage) {
   }
   switch (payload.type) {
     case 'think':
-      reply.thinking += payload.content ?? ''
+      reply.thinking += typeof payload.content === 'string' ? payload.content : ''
       scrollDown()
       break
     case 'answer':
-      reply.content += payload.content ?? ''
+      reply.content += typeof payload.content === 'string' ? payload.content : ''
+      scrollDown()
+      break
+    case 'refer':
+      reply.references?.push(payload.content as Reference)
       scrollDown()
       break
     case 'finish':
-      if (payload.content) {
+      if (typeof payload.content === 'string' && payload.content) {
         currentSession.value = payload.content
       }
       void loadSessions()
       break
     case 'error':
-      reply.error = payload.content || '回答失败，请稍后重试。'
+      reply.error =
+        (typeof payload.content === 'string' ? payload.content : '') || '回答失败，请稍后重试。'
       break
   }
 }
@@ -265,6 +282,7 @@ async function send() {
     content: '',
     thinking: '',
     time: clock(),
+    references: [],
     pending: true
   })
   messages.value.push(reply)
@@ -438,6 +456,19 @@ onBeforeUnmount(() => {
                   <span v-if="message.pending" class="cursor" />
                 </template>
               </div>
+              <details v-if="message.references?.length" class="references">
+                <summary>参考资料（{{ message.references.length }}）</summary>
+                <p v-for="item in message.references" :key="item.serial" class="reference-line">
+                  [{{ item.serial }}]《{{ item.novel_title }}》{{ item.chapter_title }}
+                  <a
+                    v-if="item.origin_id && item.origin_type"
+                    class="reference-download"
+                    :href="`${OSS_BASE_URL}/Origin/${item.origin_id}.${item.origin_type}`"
+                    target="_blank"
+                    rel="noopener"
+                  >下载</a>
+                </p>
+              </details>
               <p v-if="message.error" class="error-line">{{ message.error }}</p>
             </div>
           </div>
@@ -797,6 +828,38 @@ onBeforeUnmount(() => {
   margin: 8px 0 0;
   color: var(--el-color-danger);
   font-size: 12px;
+}
+
+/* 参考资料 */
+.references {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #fafafd;
+  color: var(--text-sub);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.references summary {
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.reference-line {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.reference-download {
+  margin-left: 6px;
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.reference-download:hover {
+  text-decoration: underline;
 }
 
 /* 打字指示 */

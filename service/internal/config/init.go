@@ -21,6 +21,9 @@ var Recall string
 //go:embed normal.txt
 var Normal string
 
+//go:embed compress.txt
+var Compress string
+
 // Cfg 全局配置。
 var Cfg *Config
 
