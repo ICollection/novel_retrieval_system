@@ -28,13 +28,13 @@ func vectorize(ctx context.Context, mission string, novel string) (int32, error)
 	}
 	// 处理剩余切片。
 	current := *embed_count
-	for i := *embed_count; i < *total_count; i += 20 {
+	for i := *embed_count; i < *total_count; i += 10 {
 		// 验证是否退出。
 		if ctx.Err() != nil {
 			return current, ctx.Err()
 		}
 		// 获取一段切片。
-		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select id,chapter,serial,prefix,middle,suffix from segment where novel=$1 and serial>$2 and serial<=$3 order by serial;", novel, i, i+20)
+		segments, err := storage.RDB.QueryMatrix[segment](ctx, "select id,chapter,serial,prefix,middle,suffix from segment where novel=$1 and serial>$2 and serial<=$3 order by serial;", novel, i, i+10)
 		if err != nil {
 			return current, err
 		}
