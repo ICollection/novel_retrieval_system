@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
+	"service/internal/common"
 	"service/internal/config"
 	"service/internal/handler"
 	"service/internal/pipeline"
@@ -18,8 +18,16 @@ import (
 // main 主函数。
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	// 初始化分词组件。
+	if err := common.Initialize(); err != nil {
+		slog.Error("[INI]加载分词组件失败", "error", err)
+		return
+	}
 	// 初始化存储层。
-	storage.Initialize()
+	if err := storage.Initialize(); err != nil {
+		slog.Error("[INI]初始化存储层失败", "error", err)
+		return
+	}
 	defer storage.Dispose()
 	// 初始化服务层。
 	service.Initialize()
@@ -47,8 +55,8 @@ func main() {
 	handler.Register(engine)
 	// 启动网络服务。
 	address := fmt.Sprintf("0.0.0.0:%d", config.Cfg.Station.Port)
-	log.Println("正在启动服务，服务监听地址：", address)
+	slog.Info("[INI]正在启动监听服务", "address", address)
 	if err := engine.Run(address); err != nil {
-		log.Fatal("启动服务失败，详细错误信息：", err)
+		slog.Error("[INI]启动监听服务失败", "error", err)
 	}
 }

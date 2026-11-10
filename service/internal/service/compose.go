@@ -35,7 +35,7 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 		return nil, err
 	}
 	// 召回相关切片。
-	question, err := cs.makeupQueryQuestion(ctx, *session, &consume)
+	question, matching1, matching2, err := cs.makeupQueryQuestion(ctx, *session, &consume)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (cs *composeService) ComposeAnswer(ctx *gin.Context, session *string, conte
 	if question == nil {
 		recalls, err = cs.recallThroughRecent(ctx, *session)
 	} else {
-		recalls, err = cs.recallThroughVector(ctx, question, novels)
+		recalls, err = cs.recallThroughVector(ctx, question, matching1, matching2, novels)
 	}
 	if err != nil {
 		return nil, err
@@ -157,31 +157,32 @@ func (cs *composeService) appendHumanMessage(ctx *gin.Context, session *string, 
 // param: ctx 上下文。
 // param: session 会话编码。
 // param: consume 消费词元。
-// return: 问题向量，错误信息。
-func (cs *composeService) makeupQueryQuestion(ctx *gin.Context, session string, consume *consume) ([]float32, error) {
+// return: 问题向量，稀疏向量，稀疏向量，错误信息。
+func (cs *composeService) makeupQueryQuestion(ctx *gin.Context, session string, consume *consume) ([]float32, []uint32, []float32, error) {
 	// 获取查询文本。
 	prompt, err := cs.makeupSessionPrompt(ctx, session)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	// 小模型整理问题。
 	question, slmPrompt, slmAnswer, err := storage.SLM.AnswerDirect(ctx, config.Recall, strings.Join(prompt, "\n"), 4096)
 	consume.SlmPrompt = slmPrompt
 	consume.SlmAnswer = slmAnswer
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	// 维持原有问题。
 	if *question == "CONTINUE" {
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 	// 返回问题向量。
 	result, vemPrompt, err := storage.VEM.ComputeVector(ctx, *question)
 	consume.VemPrompt = vemPrompt
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return result, nil
+	matching1, matching2 := common.GetMatching(*question)
+	return result, matching1, matching2, nil
 }
 
 // makeupSessionPrompt 组织会话提示词。
@@ -260,10 +261,12 @@ func (cs *composeService) recallThroughRecent(ctx *gin.Context, session string) 
 //
 // param: ctx 上下文。
 // param: question 问题向量。
+// param: matching1 稀疏向量。
+// param: matching2 稀疏向量。
 // param: novels 小说范围。
 // return: 召回切片，错误信息。
-func (cs *composeService) recallThroughVector(ctx *gin.Context, question []float32, novels []string) ([]recall, error) {
-	points, err := storage.VDB.FilterPoints(ctx, question, novels, 20, 0.5)
+func (cs *composeService) recallThroughVector(ctx *gin.Context, question []float32, matching1 []uint32, matching2 []float32, novels []string) ([]recall, error) {
+	points, err := storage.VDB.FilterPoints(ctx, question, matching1, matching2, novels, 20, 0.5)
 	if err != nil {
 		return nil, err
 	}

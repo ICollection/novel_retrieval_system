@@ -30,6 +30,11 @@ var Normal string
 //go:embed compress.txt
 var Compress string
 
+// Abstract 摘要用系统提示词。
+//
+//go:embed abstract.txt
+var Abstract string
+
 // Cfg 全局配置。
 var Cfg *Config
 

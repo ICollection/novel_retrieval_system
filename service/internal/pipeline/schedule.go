@@ -2,7 +2,7 @@ package pipeline
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"service/internal/common"
 	"service/internal/config"
 	"service/internal/storage"
@@ -33,7 +33,7 @@ func schedule(ctx context.Context) {
 func assign(ctx context.Context) {
 	missions, err := storage.RDB.QueryMatrix[mission](ctx, "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status in ($1,$2,$3,$4) order by mission.status desc,mission.launch_time;", common.MissionStatus02, common.MissionStatus03, common.MissionStatus04, common.MissionStatus05)
 	if err != nil {
-		log.Println("查询可用任务失败，详细错误信息：", err)
+		slog.Error("[SKD]查询可用任务失败", "error", err)
 		return
 	}
 	for _, mission := range missions {
@@ -43,7 +43,7 @@ func assign(ctx context.Context) {
 	}
 	missions, err = storage.RDB.QueryMatrix[mission](ctx, "select mission.id as mission,novel.id as novel,origin.id as origin,mission.status,origin.type,total_count,embed_count,retry_count from mission inner join novel on novel.id=mission.novel inner join origin on origin.id=novel.origin where mission.status=$1 order by mission.status desc,mission.launch_time;", common.MissionStatus08)
 	if err != nil {
-		log.Println("查询取消任务失败，详细错误信息：", err)
+		slog.Error("[SKD]查询取消任务失败", "error", err)
 		return
 	}
 	mutex.Lock()
@@ -118,11 +118,11 @@ func handle(ctx context.Context, mission *mission) {
 		// 更新任务状态。
 		err := storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus03, time.Now().UTC(), mission.Mission)
 		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]更新任务状态失败", "error", err)
 			return
 		}
 		// 记录成功日志。
-		log.Println("开始解析文件成功，原始文件：", *mission.Origin+"."+*mission.Type)
+		slog.Info("[SKD]开始解析文件成功", "origin", *mission.Origin+"."+*mission.Type)
 		status = common.MissionStatus03
 	}
 	// 执行归一操作。
@@ -134,17 +134,21 @@ func handle(ctx context.Context, mission *mission) {
 		// 执行归一操作。
 		err := normalize(ctx, *mission.Origin, *mission.Type)
 		if err != nil {
-			log.Println("执行归一操作失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]执行归一操作失败", "error", err)
+			err = storage.RDB.QueryNaught(ctx, "update mission set update_time=$1,retry_count=retry_count+1 where id=$2;", time.Now().UTC(), mission.Mission)
+			if err != nil {
+				slog.Error("[SKD]更新任务状态失败", "error", err)
+				return
+			}
 			return
 		}
 		// 更新任务状态。
+		slog.Info("[SKD]执行归一操作成功", "normal", *mission.Origin+".md")
 		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,update_time=$2 where id=$3", common.MissionStatus04, time.Now().UTC(), mission.Mission)
 		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]更新任务状态失败", "error", err)
 			return
 		}
-		// 记录成功日志。
-		log.Println("执行归一操作成功，归一文件：", *mission.Origin+".md")
 		status = common.MissionStatus04
 	}
 	// 执行分章切片。
@@ -156,20 +160,24 @@ func handle(ctx context.Context, mission *mission) {
 		// 执行分章切片。
 		total_count, character_count, chapter_count, err := organize(ctx, *mission.Origin, *mission.Novel)
 		if err != nil {
-			log.Println("执行分章切片失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]执行分章切片失败", "error", err)
+			err = storage.RDB.QueryNaught(ctx, "update mission set update_time=$1,retry_count=retry_count+1 where id=$2;", time.Now().UTC(), mission.Mission)
+			if err != nil {
+				slog.Error("[SKD]更新任务状态失败", "error", err)
+				return
+			}
 			return
 		}
 		// 更新任务状态。
+		slog.Info("[SKD]执行分章切片成功", "mission", *mission.Mission)
 		var batch storage.Batch
 		batch.Append("update mission set status=$1,total_count=$2,embed_count=0,update_time=$3 where id=$4", common.MissionStatus05, total_count, time.Now().UTC(), mission.Mission)
 		batch.Append("update novel set character_count=$1,chapter_count=$2,update_time=$3 where id=$4", character_count, chapter_count, time.Now().UTC(), mission.Novel)
 		err = storage.RDB.BatchNaught(ctx, &batch)
 		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]更新任务状态失败", "error", err)
 			return
 		}
-		// 记录成功日志。
-		log.Println("执行分章切片成功，切片数量：", total_count)
 		status = common.MissionStatus05
 	}
 	// 执行向量入库。
@@ -181,17 +189,21 @@ func handle(ctx context.Context, mission *mission) {
 		// 执行向量入库。
 		embed_count, err := vectorize(ctx, *mission.Mission, *mission.Novel)
 		if err != nil {
-			log.Println("执行向量入库失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]执行向量入库失败", "error", err)
+			err = storage.RDB.QueryNaught(ctx, "update mission set update_time=$1,retry_count=retry_count+1 where id=$2;", time.Now().UTC(), mission.Mission)
+			if err != nil {
+				slog.Error("[SKD]更新任务状态失败", "error", err)
+				return
+			}
 			return
 		}
 		// 更新任务状态。
+		slog.Info("[SKD]执行向量入库成功", "error", *mission.Mission)
 		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,embed_count=$2,finish_time=$3,update_time=$3 where id=$4", common.MissionStatus06, embed_count, time.Now().UTC(), mission.Mission)
 		if err != nil {
-			log.Println("更新任务状态失败，详细错误信息：", err.Error())
+			slog.Error("[SKD]更新任务状态失败", "error", err)
 			return
 		}
-		// 记录成功日志。
-		log.Println("执行向量入库成功，入库数量：", embed_count)
 		status = common.MissionStatus06
 	}
 }

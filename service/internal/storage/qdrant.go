@@ -38,11 +38,25 @@ func (qc *QdrantClient) CreateCollection() error {
 	} else if exists == false {
 		request := qdrant.CreateCollection{
 			CollectionName: qc.collection,
-			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-				Size:     1024,
-				Distance: qdrant.Distance_Cosine,
-				Datatype: qdrant.Datatype_Float16.Enum(),
+			VectorsConfig: qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{
+				"original": {
+					Size:     1024,
+					Distance: qdrant.Distance_Cosine,
+					Datatype: qdrant.Datatype_Float16.Enum(),
+				},
+				"abstract": {
+					Size:     1024,
+					Distance: qdrant.Distance_Cosine,
+					Datatype: qdrant.Datatype_Float16.Enum(),
+				},
 			}),
+			SparseVectorsConfig: &qdrant.SparseVectorConfig{
+				Map: map[string]*qdrant.SparseVectorParams{
+					"matching": {
+						Modifier: qdrant.Modifier_Idf.Enum(),
+					},
+				},
+			},
 		}
 		if err = qc.client.CreateCollection(ctx, &request); err != nil {
 			slog.Error("[VDB]创建集合失败", "error", err)
@@ -55,20 +69,74 @@ func (qc *QdrantClient) CreateCollection() error {
 // FilterPoints 查询向量数据。
 //
 // param: ctx 上下文。
-// param: vector 查询向量。
+// param: question 问题向量。
+// param: matching1 稀疏向量。
+// param: matching2 稀疏向量。
 // param: novels 小说范围。
 // param: limit 查询数量。
 // param: threshold 相似度值。
 // return: 向量数据，错误信息。
-func (qc *QdrantClient) FilterPoints(ctx context.Context, vector []float32, novels []string, limit int, threshold float32) ([]*qdrant.ScoredPoint, error) {
-	points, err := qc.client.Query(ctx, &qdrant.QueryPoints{
-		CollectionName: qc.collection,
-		Query:          qdrant.NewQueryNearest(qdrant.NewVectorInputDense(vector)),
-		Filter:         &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatchKeywords("novel", novels...)}},
-		Limit:          new(uint64(limit)),
-		ScoreThreshold: new(threshold),
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+func (qc *QdrantClient) FilterPoints(ctx context.Context, question []float32, matching1 []uint32, matching2 []float32, novels []string, limit int, threshold float32) ([]*qdrant.ScoredPoint, error) {
+	var (
+		points []*qdrant.ScoredPoint
+		err    error
+	)
+	filter := &qdrant.Filter{Must: []*qdrant.Condition{qdrant.NewMatchKeywords("novel", novels...)}}
+	if matching1 == nil || matching2 == nil || len(matching1) == 0 || len(matching1) != len(matching2) {
+		points, err = qc.client.Query(ctx, &qdrant.QueryPoints{
+			CollectionName: qc.collection,
+			Prefetch: []*qdrant.PrefetchQuery{
+				{
+					Query:          qdrant.NewQueryNearest(qdrant.NewVectorInputDense(question)),
+					Using:          new("original"),
+					Filter:         filter,
+					Limit:          new(uint64(limit)),
+					ScoreThreshold: new(threshold),
+				},
+				{
+					Query:          qdrant.NewQueryNearest(qdrant.NewVectorInputDense(question)),
+					Using:          new("abstract"),
+					Filter:         filter,
+					Limit:          new(uint64(limit)),
+					ScoreThreshold: new(threshold),
+				},
+			},
+			Query:       qdrant.NewQueryFusion(qdrant.Fusion_RRF),
+			Filter:      filter,
+			Limit:       new(uint64(limit)),
+			WithPayload: qdrant.NewWithPayload(true),
+		})
+	} else {
+		points, err = qc.client.Query(ctx, &qdrant.QueryPoints{
+			CollectionName: qc.collection,
+			Prefetch: []*qdrant.PrefetchQuery{
+				{
+					Query:          qdrant.NewQueryNearest(qdrant.NewVectorInputDense(question)),
+					Using:          new("original"),
+					Filter:         filter,
+					Limit:          new(uint64(limit)),
+					ScoreThreshold: new(threshold),
+				},
+				{
+					Query:          qdrant.NewQueryNearest(qdrant.NewVectorInputDense(question)),
+					Using:          new("abstract"),
+					Filter:         filter,
+					Limit:          new(uint64(limit)),
+					ScoreThreshold: new(threshold),
+				},
+				{
+					Query:  qdrant.NewQueryNearest(qdrant.NewVectorInputSparse(matching1, matching2)),
+					Using:  new("matching"),
+					Filter: filter,
+					Limit:  new(uint64(limit)),
+				},
+			},
+			Query:       qdrant.NewQueryFusion(qdrant.Fusion_RRF),
+			Filter:      filter,
+			Limit:       new(uint64(limit)),
+			WithPayload: qdrant.NewWithPayload(true),
+		})
+	}
 	if err != nil {
 		slog.Error("[VDB]查询向量失败", "error", err)
 		return nil, err
@@ -80,14 +148,25 @@ func (qc *QdrantClient) FilterPoints(ctx context.Context, vector []float32, nove
 //
 // param: ctx 上下文。
 // param: id 向量标识。
-// param: vector 向量数据。
+// param: original 原文向量。
+// param: abstract 摘要向量。
+// param: matching1 稀疏向量。
+// param: matching2 稀疏向量。
 // param: payload 向量载荷。
 // return: 错误信息。
-func (qc *QdrantClient) UpsertPoints(ctx context.Context, id string, vector []float32, payload map[string]any) error {
+func (qc *QdrantClient) UpsertPoints(ctx context.Context, id string, original []float32, abstract []float32, matching1 []uint32, matching2 []float32, payload map[string]any) error {
+	vectors := map[string]*qdrant.Vector{}
+	vectors["original"] = qdrant.NewVectorDense(original)
+	if abstract != nil {
+		vectors["abstract"] = qdrant.NewVectorDense(abstract)
+	}
+	if matching1 != nil && matching2 != nil && len(matching1) > 0 && len(matching2) > 0 {
+		vectors["matching"] = qdrant.NewVectorSparse(matching1, matching2)
+	}
 	points := []*qdrant.PointStruct{
 		&qdrant.PointStruct{
 			Id:      qdrant.NewID(id),
-			Vectors: qdrant.NewVectorsDense(vector),
+			Vectors: qdrant.NewVectorsMap(vectors),
 			Payload: qdrant.NewValueMap(payload),
 		},
 	}

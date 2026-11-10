@@ -23,6 +23,7 @@ type Station struct {
 	Secret      string `mapstructure:"secret"`
 	Expire      int    `mapstructure:"expire"`
 	Concurrency int    `mapstructure:"concurrency"`
+	Abstract    bool   `mapstructure:"abstract"`
 }
 
 // Models 模型服务配置。

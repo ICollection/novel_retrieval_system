@@ -12,6 +12,8 @@ station:
   expire: 24
   # 并发处理小说文件的数量
   concurrency: 3
+  # 切片保存摘要向量
+  abstract: true
 
 # 模型服务（OpenAI 兼容接口）
 models:
