@@ -102,7 +102,7 @@ func (ps *prepareService) LaunchMission(ctx *gin.Context, id *string) (*string, 
 		return nil, errors.New("任务状态错误。")
 	}
 	// 更新任务状态。
-	err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,launch_time=$2 where id=$3;", common.MissionStatus02, time.Now().UTC(), id)
+	err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,launch_time=$2,update_time=$2, where id=$3;", common.MissionStatus02, time.Now().UTC(), id)
 	if err != nil {
 		return nil, err
 	}

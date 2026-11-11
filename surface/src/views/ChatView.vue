@@ -7,7 +7,8 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { API_BASE_URL, OSS_BASE_URL, request } from '../api'
+import { API_BASE_URL, OSS_BASE_URL, checkUnauthorized, renewToken, request } from '../api'
+import type { Result } from '../api'
 import { getSession } from '../auth'
 
 /** 会话，字段与后端 service/discuss_service.go 中的 session 结构一致。 */
@@ -412,8 +413,16 @@ async function send() {
       body: form,
       signal: controller.signal
     })
+    // 后端续签令牌时通过响应头返回新令牌
+    renewToken(response)
     if (!response.ok || !response.body) {
       throw new Error('请求失败，请稍后重试。')
+    }
+    // 令牌失效时后端返回普通 JSON，而不是事件流
+    if (response.headers.get('Content-Type')?.includes('application/json')) {
+      const result = (await response.json()) as Result<unknown>
+      checkUnauthorized(result.failure)
+      throw new Error(result.message ?? '请求失败，请稍后重试。')
     }
     await consume(response.body, reply)
   } catch (error) {

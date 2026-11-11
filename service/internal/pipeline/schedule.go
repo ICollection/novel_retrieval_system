@@ -198,7 +198,7 @@ func handle(ctx context.Context, mission *mission) {
 			return
 		}
 		// 更新任务状态。
-		slog.Info("[SKD]执行向量入库成功", "error", *mission.Mission)
+		slog.Info("[SKD]执行向量入库成功", "mission", *mission.Mission)
 		err = storage.RDB.QueryNaught(ctx, "update mission set status=$1,embed_count=$2,finish_time=$3,update_time=$3 where id=$4", common.MissionStatus06, embed_count, time.Now().UTC(), mission.Mission)
 		if err != nil {
 			slog.Error("[SKD]更新任务状态失败", "error", err)

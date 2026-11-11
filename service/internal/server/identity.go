@@ -70,7 +70,7 @@ func ParseToken(buffer string) (*Claims, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(buffer, claims, func(*jwt.Token) (any, error) { return []byte(config.Cfg.Station.Secret), nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
-		return nil, fmt.Errorf("验证登录令牌失败，详细错误信息：%w", err)
+		return nil, err
 	}
 	if token.Valid == false {
 		return nil, errors.New("登录令牌已经失效。")

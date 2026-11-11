@@ -113,6 +113,15 @@ export async function signIn(login: string, password: string): Promise<Session> 
   return session
 }
 
+/** 用续签的令牌替换本地令牌，其余登录信息保持不变 */
+export function updateToken(token: string): void {
+  const session = getSession()
+  if (!session) {
+    return
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...session, token }))
+}
+
 /** 退出登录，清除本地登录态 */
 export function signOut(): void {
   localStorage.removeItem(STORAGE_KEY)

@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"errors"
 	"service/internal/common"
 	"service/internal/config"
 	"service/internal/storage"
@@ -48,15 +47,11 @@ func vectorize(ctx context.Context, mission string, novel string) (int32, error)
 			var abstract []float32
 			if config.Cfg.Station.Abstract == true {
 				summary, _, _, err := storage.SLM.AnswerDirect(ctx, config.Abstract, "======== 以下为待提炼文本 ========\n"+content, 8192)
-				if err != nil {
-					return current, err
-				}
-				if summary == nil {
-					return current, errors.New("提取摘要为空。")
-				}
-				abstract, _, err = storage.VEM.ComputeVector(ctx, *summary)
-				if err != nil {
-					return current, err
+				if err != nil && summary != nil {
+					abstract, _, err = storage.VEM.ComputeVector(ctx, *summary)
+					if err != nil {
+						return current, err
+					}
 				}
 			}
 			matching1, matching2 := common.GetMatching(content)

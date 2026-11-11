@@ -22,6 +22,37 @@ export class ApiError extends Error {
   }
 }
 
+/** 登录失效时的处理函数，由 main.ts 注册。 */
+let unauthorizedHandler: (() => void) | undefined
+
+/** 注册登录失效时的处理函数。 */
+export function onUnauthorized(handler: () => void): void {
+  unauthorizedHandler = handler
+}
+
+/** 后端返回 401 时通知登录已失效。 */
+export function checkUnauthorized(failure: number): void {
+  if (failure === 401) {
+    unauthorizedHandler?.()
+  }
+}
+
+/** 令牌续签时的处理函数，由 main.ts 注册。 */
+let renewedHandler: ((token: string) => void) | undefined
+
+/** 注册令牌续签时的处理函数。 */
+export function onTokenRenewed(handler: (token: string) => void): void {
+  renewedHandler = handler
+}
+
+/** 响应头带有续签令牌时，通知外部替换本地令牌。 */
+export function renewToken(response: Response): void {
+  const token = response.headers.get('X-Token')
+  if (token) {
+    renewedHandler?.(token)
+  }
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   /** 登录令牌，传入后自动加上 Authorization 请求头。 */
@@ -47,11 +78,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   const response = await fetch(url, { method: options.method ?? 'GET', headers, body: options.body })
+  // 令牌临近过期时后端会续签，并通过响应头返回新令牌
+  renewToken(response)
   if (!response.ok) {
     throw new ApiError('请求失败，请稍后重试。', response.status)
   }
   const result = (await response.json()) as Result<T>
   if (!result.success) {
+    // 令牌过期或无效时跳转登录页
+    checkUnauthorized(result.failure)
     throw new ApiError(result.message ?? '请求失败', result.failure)
   }
   return result.content as T

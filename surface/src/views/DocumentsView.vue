@@ -116,9 +116,6 @@ const filtered = computed(() => {
 /** 任务视图：显示全部任务。 */
 const tasks = computed(() => missions.value)
 
-/** 是否有正在处理的任务，决定是否轮询。 */
-const hasRunning = computed(() => missions.value.some((item) => runningStatus.includes(item.status ?? '')))
-
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -142,6 +139,21 @@ function formatTime(value?: string) {
 
 function meta(status?: string) {
   return statusMeta[status ?? ''] ?? { label: '未知', type: undefined }
+}
+
+/** 任务状态底色：处理中、已完成、已失败。 */
+const statusTone: Record<string, string> = {
+  '02': 'status-running',
+  '03': 'status-running',
+  '04': 'status-running',
+  '05': 'status-running',
+  '06': 'status-done',
+  '07': 'status-failed'
+}
+
+/** 获取任务状态底色样式。 */
+function tone(status?: string) {
+  return statusTone[status ?? ''] ?? ''
 }
 
 /** 入库进度百分比，保留两位小数。 */
@@ -172,7 +184,6 @@ async function refresh(silent = false) {
     if (!silent) ElMessage.error(error instanceof Error ? error.message : '加载失败')
   } finally {
     loading.value = false
-    ensurePolling()
   }
 }
 
@@ -342,38 +353,20 @@ async function removeNovel(novel: NovelItem) {
   }
 }
 
-/** 轮询：只在进行中任务存在时启动，页面隐藏时暂停。 */
+/** 轮询：每 1 分钟刷新一次任务列表与小说列表。 */
 let timer: number | undefined
 
-function stopPolling() {
+onMounted(() => {
+  void refresh()
+  // 直接启动轮询，不依赖首次请求是否成功
+  timer = window.setInterval(() => void refresh(true), 60000)
+})
+
+onBeforeUnmount(() => {
   if (timer !== undefined) {
     window.clearInterval(timer)
     timer = undefined
   }
-}
-
-function ensurePolling() {
-  if (hasRunning.value && document.visibilityState === 'visible') {
-    if (timer === undefined) {
-      timer = window.setInterval(() => void refresh(true), 3000)
-    }
-  } else {
-    stopPolling()
-  }
-}
-
-function onVisibilityChange() {
-  ensurePolling()
-}
-
-onMounted(() => {
-  void refresh()
-  document.addEventListener('visibilitychange', onVisibilityChange)
-})
-
-onBeforeUnmount(() => {
-  stopPolling()
-  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
@@ -462,13 +455,13 @@ onBeforeUnmount(() => {
         <el-table-column label="状态" min-width="66">
           <template #default="{ row }">
             <el-tooltip v-if="row.status === '07'" placement="top">
-              <span class="doc-sub">{{ meta(row.status).label }}</span>
+              <span :class="['doc-sub', tone(row.status)]">{{ meta(row.status).label }}</span>
               <template #content>
                 <div>重试次数：{{ row.retry_count ?? 0 }}</div>
                 <div>异常消息：{{ row.message || '无' }}</div>
               </template>
             </el-tooltip>
-            <span v-else class="doc-sub">{{ meta(row.status).label }}</span>
+            <span v-else :class="['doc-sub', tone(row.status)]">{{ meta(row.status).label }}</span>
           </template>
         </el-table-column>
 
@@ -845,6 +838,31 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 任务状态底色：处理中淡蓝、已完成淡绿、已失败淡红 */
+.doc-sub.status-running {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #eaf2fd;
+  color: #3568b0;
+}
+
+.doc-sub.status-done {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e9f7ee;
+  color: #2f7a4a;
+}
+
+.doc-sub.status-failed {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fdecec;
+  color: #b23b3b;
 }
 
 /* 列宽自适应，窗口再窄也不显示横向滚动条 */
