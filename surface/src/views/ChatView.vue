@@ -7,41 +7,20 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { API_BASE_URL, OSS_BASE_URL, checkUnauthorized, renewToken, request } from '../api'
-import type { Result } from '../api'
-import { getSession } from '../auth'
-
-/** 会话，字段与后端 service/discuss_service.go 中的 session 结构一致。 */
-interface SessionItem {
-  id: string | null
-  title: string | null
-  summary: string | null
-  contain: string | null
-  current: number | null
-  create_user: string | null
-  create_time: string | null
-  update_time: string | null
-}
-
-/** 会话消息，字段与后端 service/discuss_service.go 中的 message 结构一致。 */
-interface MessageItem {
-  id: string | null
-  session: string | null
-  serial: number | null
-  human: boolean | null
-  content: string | null
-  novels: string | null
-  segments: string | null
-  complete: boolean | null
-  create_time: string | null
-}
-
-/** 小说，字段与后端 service/novel.go 中的 novel 结构一致。 */
-interface NovelItem {
-  id: string
-  title?: string
-  status?: string
-}
+import { OSS_BASE_URL } from '../api'
+import {
+  appendMessage,
+  consumeMission,
+  deleteSession as removeSession,
+  filterMessage,
+  filterNovels,
+  filterSession,
+  modifySession
+} from '../service/discuss'
+import type { SessionItem } from '../service/discuss'
+import { filterNovel } from '../service/prepare'
+import type { NovelItem } from '../service/prepare'
+import type { Consume } from '../service/type'
 
 /** 参考资料。 */
 interface Reference {
@@ -73,17 +52,6 @@ interface StreamEvent {
   type?: string
   content?: string | Reference
 }
-
-/** 词元消费，字段与后端 service/compose_service.go 中的 consume 结构一致。 */
-interface Consume {
-  llm_prompt?: number
-  llm_answer?: number
-  slm_prompt?: number
-  slm_answer?: number
-  vem_prompt?: number
-}
-
-const token = getSession()?.token ?? ''
 
 const sessions = ref<SessionItem[]>([])
 const currentSession = ref<string | null>(null)
@@ -199,14 +167,9 @@ function scrollDown() {
 
 /** 加载会话列表。 */
 async function loadSessions() {
-  if (!token) {
-    return
-  }
   loadingSessions.value = true
   try {
-    const content = await request<SessionItem[]>('/discuss/filterSession', {
-      token
-    })
+    const content = await filterSession()
     sessions.value = Array.isArray(content) ? content : []
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载会话失败')
@@ -217,11 +180,8 @@ async function loadSessions() {
 
 /** 加载就绪的小说，作为本轮问答的书单候选。 */
 async function loadNovels() {
-  if (!token) {
-    return
-  }
   try {
-    const content = await request<NovelItem[]>('/prepare/filterNovel', { token })
+    const content = await filterNovel()
     novels.value = (Array.isArray(content) ? content : []).filter((item) => item.status === '06')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载小说失败')
@@ -237,10 +197,7 @@ async function openSession(id: string) {
   messages.value = []
   loadingMessages.value = true
   try {
-    const content = await request<MessageItem[]>('/discuss/filterMessage', {
-      token,
-      query: { session: id, recent: 60 }
-    })
+    const content = await filterMessage(id, 60)
     messages.value = (Array.isArray(content) ? content : []).map((item) => ({
       id: ++sequence,
       role: item.human ? 'user' : 'assistant',
@@ -249,10 +206,7 @@ async function openSession(id: string) {
       time: formatTime(item.create_time) || clock()
     }))
     // 恢复该会话使用的小说。
-    const chosen = await request<string[] | null>('/discuss/filterNovels', {
-      token,
-      query: { id }
-    })
+    const chosen = await filterNovels(id)
     selectedNovels.value = (Array.isArray(chosen) ? chosen : []).filter((item) => item)
     scrollDown()
   } catch (error) {
@@ -277,10 +231,7 @@ async function showConsume() {
     return
   }
   try {
-    const content = await request<Consume | null>('/discuss/consumeMission', {
-      token,
-      query: { id: currentSession.value }
-    })
+    const content = await consumeMission(currentSession.value)
     ElMessageBox.alert(consumeHtml(content), '词元统计', {
       dangerouslyUseHTMLString: true,
       confirmButtonText: '知道了',
@@ -407,24 +358,8 @@ async function send() {
 
   controller = new AbortController()
   try {
-    const response = await fetch(`${API_BASE_URL}/discuss/appendMessage`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-      signal: controller.signal
-    })
-    // 后端续签令牌时通过响应头返回新令牌
-    renewToken(response)
-    if (!response.ok || !response.body) {
-      throw new Error('请求失败，请稍后重试。')
-    }
-    // 令牌失效时后端返回普通 JSON，而不是事件流
-    if (response.headers.get('Content-Type')?.includes('application/json')) {
-      const result = (await response.json()) as Result<unknown>
-      checkUnauthorized(result.failure)
-      throw new Error(result.message ?? '请求失败，请稍后重试。')
-    }
-    await consume(response.body, reply)
+    const body = await appendMessage(form, controller.signal)
+    await consume(body, reply)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
@@ -456,10 +391,7 @@ async function renameSession(item: SessionItem) {
     return
   }
   try {
-    const form = new FormData()
-    form.append('id', item.id)
-    form.append('title', title)
-    await request<string>('/discuss/modifySession', { method: 'POST', token, body: form })
+    await modifySession(item.id, title)
     const target = sessions.value.find((session) => session.id === item.id)
     if (target) {
       target.title = title
@@ -489,11 +421,7 @@ async function deleteSession(item: SessionItem) {
     return
   }
   try {
-    await request<string>('/discuss/deleteSession', {
-      method: 'DELETE',
-      token,
-      query: { id: item.id }
-    })
+    await removeSession(item.id)
     if (currentSession.value === item.id) {
       currentSession.value = null
       messages.value = []

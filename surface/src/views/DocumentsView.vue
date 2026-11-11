@@ -8,58 +8,17 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { request } from '../api'
 import { getSession, hasPermission, Permission } from '../auth'
-
-/** 后端返回的小说信息。 */
-interface NovelItem {
-  /** 小说标识 */
-  id: string
-  /** 原始文件标识 */
-  origin?: string
-  /** 书名 */
-  title?: string
-  /** 字符数 */
-  character_count?: number
-  /** 章节数 */
-  chapter_count?: number
-  /** 任务状态，06 表示已就绪 */
-  status?: string
-  /** 创建人编码 */
-  create_code?: string
-  /** 创建人名称 */
-  create_name?: string
-  /** 创建时间 */
-  create_time?: string
-  /** 更新时间 */
-  update_time?: string
-}
-
-/** 后端返回的分析任务信息。 */
-interface MissionItem {
-  /** 任务标识 */
-  id: string
-  /** 所属小说标识 */
-  novel_code?: string
-  /** 所属小说名称 */
-  novel_name?: string
-  /** 任务状态，01 待启动、02 已启动、03 解析中、04 切分中、05 向量中、06 已完成、07 已失败、08 已取消 */
-  status?: string
-  /** 分片总数 */
-  total_count?: number
-  /** 已向量化数量 */
-  embed_count?: number
-  /** 启动时间 */
-  launch_time?: string
-  /** 结束时间 */
-  finish_time?: string
-  /** 更新时间 */
-  update_time?: string
-  /** 重试次数 */
-  retry_count?: number
-  /** 失败原因 */
-  message?: string
-}
+import {
+  cancelMission,
+  deleteNovel,
+  filterMission,
+  filterNovel,
+  launchMission,
+  modifyNovel,
+  uploadOrigin
+} from '../service/prepare'
+import type { MissionItem, NovelItem } from '../service/prepare'
 
 type TagType = 'success' | 'info' | 'warning' | 'danger' | undefined
 
@@ -174,10 +133,7 @@ async function refresh(silent = false) {
   }
   if (!silent) loading.value = true
   try {
-    const [novelContent, missionContent] = await Promise.all([
-      request<NovelItem[]>('/prepare/filterNovel', { token: session.token }),
-      request<MissionItem[]>('/prepare/filterMission', { token: session.token })
-    ])
+    const [novelContent, missionContent] = await Promise.all([filterNovel(), filterMission()])
     novels.value = Array.isArray(novelContent) ? novelContent : []
     missions.value = Array.isArray(missionContent) ? missionContent : []
   } catch (error) {
@@ -202,11 +158,7 @@ async function upload(file: LocalFile, raw: File) {
   form.append('file', raw, raw.name)
 
   try {
-    await request<string>('/prepare/uploadOrigin', {
-      method: 'POST',
-      token: session.token,
-      body: form
-    })
+    await uploadOrigin(form)
     files.value = files.value.filter((item) => item.key !== file.key)
     raws.delete(file.key)
     ElMessage.success(`上传成功：${file.name}`)
@@ -247,15 +199,10 @@ function removeUpload(file: LocalFile) {
   files.value = files.value.filter((item) => item.key !== file.key)
 }
 
-/** 修改任务状态，后端以任务标识 id 作为参数。 */
-async function act(path: string, mission: MissionItem, message: string) {
-  if (!session) return
+/** 修改任务状态，action 为启动或取消接口。 */
+async function act(action: (id: string) => Promise<void>, mission: MissionItem, message: string) {
   try {
-    await request<unknown>(path, {
-      method: 'PATCH',
-      token: session.token,
-      query: { id: mission.id }
-    })
+    await action(mission.id)
     ElMessage.success(message)
     await refresh(true)
   } catch (error) {
@@ -264,7 +211,7 @@ async function act(path: string, mission: MissionItem, message: string) {
 }
 
 function launch(mission: MissionItem) {
-  void act('/prepare/launchMission', mission, `已启动：${mission.novel_name ?? mission.id}`)
+  void act(launchMission, mission, `已启动：${mission.novel_name ?? mission.id}`)
 }
 
 async function cancel(mission: MissionItem) {
@@ -277,7 +224,7 @@ async function cancel(mission: MissionItem) {
   } catch {
     return
   }
-  void act('/prepare/cancelMission', mission, `已取消：${mission.novel_name ?? mission.id}`)
+  void act(cancelMission, mission, `已取消：${mission.novel_name ?? mission.id}`)
 }
 
 /** 修改小说名称的对话框。 */
@@ -303,11 +250,7 @@ async function saveTitle() {
   }
   saving.value = true
   try {
-    await request<string>('/prepare/modifyNovel', {
-      method: 'PATCH',
-      token: session.token,
-      query: { id: editing.value.id, title }
-    })
+    await modifyNovel(editing.value.id, title)
     ElMessage.success('修改成功')
     editVisible.value = false
     await refresh(true)
@@ -339,11 +282,7 @@ async function removeNovel(novel: NovelItem) {
   }
   deleting.value = novel.id
   try {
-    await request<string>('/prepare/deleteNovel', {
-      method: 'DELETE',
-      token: session.token,
-      query: { id: novel.id }
-    })
+    await deleteNovel(novel.id)
     ElMessage.success(`已删除：${novel.title || novel.id}`)
     await refresh(true)
   } catch (error) {

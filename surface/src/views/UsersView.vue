@@ -3,26 +3,18 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { getSession, hasPermission, Permission, permissionOptions } from '../auth'
-import { request } from '../api'
-
-interface Account {
-  id: string
-  name: string
-  login: string
-  permission?: string
-}
-
-/** 词元消费，字段与后端 service/compose_service.go 中的 consume 结构一致。 */
-interface Consume {
-  llm_prompt?: number
-  llm_answer?: number
-  slm_prompt?: number
-  slm_answer?: number
-  vem_prompt?: number
-}
+import {
+  appendAccount,
+  changeAccount,
+  consumeAccount,
+  deleteAccount,
+  filterAccount,
+  modifyAccount
+} from '../service/account'
+import type { Account } from '../service/account'
+import type { Consume } from '../service/type'
 
 const session = getSession()
-const token = session?.token ?? ''
 /** 没有管理用户权限时，增删改按钮全部禁用。 */
 const canManage = hasPermission(session?.permission, Permission.ManageUser)
 const accounts = ref<Account[]>([])
@@ -109,7 +101,7 @@ function consumeHtml(data?: Consume | null): string {
 }
 
 /** 枚举中存在的权限值。 */
-const permissionValues = permissionOptions.map((item) => item.value)
+const permissionValues: string[] = permissionOptions.map((item) => item.value)
 
 /** 把逗号分隔的权限串拆成数组，只保留枚举中存在的权限。 */
 function splitPermission(permission?: string): string[] {
@@ -129,12 +121,12 @@ function labelOf(value: string): string {
 
 /** 查询用户列表。 */
 async function load() {
-  if (!token) {
+  if (!session) {
     return
   }
   loading.value = true
   try {
-    accounts.value = (await request<Account[] | null>('/account/filterAccount', { token })) ?? []
+    accounts.value = (await filterAccount()) ?? []
   } catch (error) {
     ElMessage.error(messageOf(error))
   } finally {
@@ -171,16 +163,12 @@ async function submitAdd() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/appendAccount', {
-      method: 'POST',
-      token,
-      query: {
-        name: addForm.name.trim(),
-        login: addForm.login.trim(),
-        password: addForm.password,
-        permission: addForm.permissions.join(',') || undefined
-      }
-    })
+    await appendAccount(
+      addForm.name.trim(),
+      addForm.login.trim(),
+      addForm.password,
+      addForm.permissions.join(',')
+    )
     ElMessage.success('用户已添加')
     addVisible.value = false
     await load()
@@ -202,15 +190,7 @@ async function submitEdit() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/modifyAccount', {
-      method: 'PATCH',
-      token,
-      query: {
-        id: current.value.id,
-        name: editForm.name.trim(),
-        permission: editForm.permissions.join(',') || undefined
-      }
-    })
+    await modifyAccount(current.value.id, editForm.name.trim(), editForm.permissions.join(','))
     ElMessage.success('用户已修改')
     editVisible.value = false
     await load()
@@ -232,11 +212,7 @@ async function submitPassword() {
   }
   submitting.value = true
   try {
-    await request<string>('/account/changeAccount', {
-      method: 'PATCH',
-      token,
-      query: { id: current.value.id, password: passwordForm.password }
-    })
+    await changeAccount(current.value.id, passwordForm.password)
     ElMessage.success('密码已修改')
     passwordVisible.value = false
   } catch (error) {
@@ -258,11 +234,7 @@ async function remove(row: Account) {
     return
   }
   try {
-    await request<string>('/account/deleteAccount', {
-      method: 'DELETE',
-      token,
-      query: { id: row.id }
-    })
+    await deleteAccount(row.id)
     ElMessage.success('用户已删除')
     await load()
   } catch (error) {
@@ -273,10 +245,7 @@ async function remove(row: Account) {
 /** 统计用户的词元消费。 */
 async function showConsume(row: Account) {
   try {
-    const content = await request<Consume | null>('/account/consumeAccount', {
-      token,
-      query: { id: row.id }
-    })
+    const content = await consumeAccount(row.id)
     ElMessageBox.alert(consumeHtml(content), `词元统计 · ${row.name}`, {
       dangerouslyUseHTMLString: true,
       confirmButtonText: '知道了',
